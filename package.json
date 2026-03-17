@@ -1,0 +1,19 @@
+{
+  "name": "bub-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Monorepo for bub and republic packages",
+  "scripts": {
+    "dev": "pnpm -F bub dev",
+    "build": "pnpm -r build",
+    "start": "pnpm -F bub start",
+    "test": "pnpm -r test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.6.1",
+  "engines": {
+    "node": ">=18"
+  }
+}

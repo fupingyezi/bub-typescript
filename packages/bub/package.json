@@ -1,0 +1,31 @@
+{
+  "name": "bub",
+  "version": "1.0.0",
+  "description": "Bub package - main application",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir dist",
+    "start": "bun run dist/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "republic": "workspace:*",
+    "@langchain/core": "^1.1.32",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "dotenv": "^17.3.1",
+    "fuse.js": "^7.1.0",
+    "grammy": "^1.41.1",
+    "js-yaml": "^4.1.1",
+    "langchain": "^1.2.32",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.9.3"
+  }
+}
