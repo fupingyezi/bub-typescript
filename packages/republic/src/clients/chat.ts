@@ -639,6 +639,22 @@ export class ChatClient {
   }
 
   private _extractText(payload: any, transport: TransportKind | null): string {
+    if (Array.isArray(payload)) {
+      const parts: string[] = [];
+      for (const chunk of payload) {
+        const text = this._extractChunkText(chunk, transport);
+        if (text) {
+          parts.push(text);
+        }
+      }
+      return parts.join("");
+    }
+
+    // 处理LangChain AIMessage对象
+    if (payload && typeof payload === "object" && "content" in payload) {
+      return payload.content || "";
+    }
+
     const parser = ChatClient._parserForPayload(payload, transport);
     return parser.extractText(payload);
   }
