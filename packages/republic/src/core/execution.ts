@@ -85,11 +85,11 @@ export class LLMCore {
   }
 
   get fallback_models(): string[] {
-    return this.fallback_models;
+    return this._fallback_models;
   }
 
   get max_retries(): number {
-    return this.max_retries;
+    return this._max_retries;
   }
 
   maxAttempts(): number {

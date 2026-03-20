@@ -48,7 +48,7 @@ export interface TapeStore {
 export interface AsyncTapeStore {
   listTapes(): Promise<string[]>;
   reset(tape: string): Promise<void>;
-  fetchAll(query: TapeQuery<TapeStore>): Promise<TapeEntry[]>;
+  fetchAll(query: TapeQuery<AsyncTapeStore>): Promise<TapeEntry[]>;
   append(tape: string, entry: TapeEntry): Promise<void>;
 }
 

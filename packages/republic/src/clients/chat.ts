@@ -5,6 +5,7 @@ import { TapeContext } from "@/tape/context";
 import { TapeManager, AsyncTapeManager } from "@/tape/manager";
 import { parserForTransport, TransportKind } from "./parsing";
 import { field } from "./parsing/common";
+import { normalizeTools } from "@/tools/schema";
 
 type MessageInput = Record<string, any>;
 type ToolInput = any;
@@ -510,7 +511,7 @@ export class ChatClient {
 
   private _normalizeTools(tools: ToolInput): ToolSet {
     try {
-      return this._toolExecutor.normalizeTools(tools);
+      return normalizeTools(tools);
     } catch (exc) {
       throw new ErrorPayload(ErrorKind.INVALID_INPUT, String(exc));
     }

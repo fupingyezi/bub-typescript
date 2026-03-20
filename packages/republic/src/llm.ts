@@ -77,6 +77,7 @@ export class LLM {
     const modelParts = resolvedModel.split(":");
     const resolvedProvider =
       provider || (modelParts.length > 1 ? modelParts[0] : "");
+    const resolvedModelId = modelParts.length > 1 ? modelParts.slice(1).join(":") : resolvedModel;
 
     if (!resolvedProvider) {
       throw new Error(
@@ -86,7 +87,7 @@ export class LLM {
 
     this._core = new LLMCore(
       resolvedProvider,
-      resolvedModel,
+      resolvedModelId,
       fallbackModels,
       maxRetries,
       apiKey,

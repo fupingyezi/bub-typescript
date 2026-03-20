@@ -221,10 +221,11 @@ export class AsyncTapeStoreAdapter implements AsyncTapeStoreInterface {
     });
   }
 
-  async fetchAll(query: TapeQuery<TapeStoreInterface>): Promise<TapeEntry[]> {
+  async fetchAll(query: TapeQuery<AsyncTapeStoreInterface>): Promise<TapeEntry[]> {
     return new Promise((resolve) => {
       setTimeout(() => {
         if (this._store instanceof InMemoryQueryMixin) {
+          // @ts-ignore - 类型转换，因为内部存储是同步的
           resolve(this._store.fetchAll(query));
         } else {
           resolve([]);

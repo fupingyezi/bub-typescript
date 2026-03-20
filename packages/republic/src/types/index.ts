@@ -1,2 +1,2 @@
-export * from "./tape";
-export * from "./result";
+export * from "./tape.d";
+export * from "./result.d";
