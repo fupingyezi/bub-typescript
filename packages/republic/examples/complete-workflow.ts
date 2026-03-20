@@ -17,7 +17,7 @@ if (!OPENAI_API_KEY) {
 async function runCompleteWorkflow() {
   console.log("=== 完整LLM工作流示例 ===\n");
 
-  // 1. 初始化LLM
+  // 1. 初始化LLM - 新的简化方式
   console.log("1. 初始化LLM...");
   const llm = new LLM("openrouter:z-ai/glm-4.5-air:free", {
     maxRetries: 3,
@@ -25,6 +25,15 @@ async function runCompleteWorkflow() {
     apiBase: process.env.OPENAI_API_BASE,
   });
   console.log(`✓ LLM初始化成功: ${llm.toString()}\n`);
+
+  // 2. 测试简化的初始化方式（不需要显式指定provider）
+  console.log("2. 测试简化的初始化方式...");
+  const simpleLlm = new LLM("z-ai/glm-4.5-air:free", {
+    apiKey: process.env.OPENAI_API_KEY,
+    apiBase: process.env.OPENAI_API_BASE,
+    verbose: 1,
+  });
+  console.log(`✓ 简化LLM初始化成功: ${simpleLlm.toString()}\n`);
 
   // 2. 创建Tape上下文用于存储会话
   console.log("2. 创建Tape上下文...");

@@ -134,8 +134,8 @@ export class ToolSet {
     this.runnable = runnable;
   }
 
-  get payload(): ToolSchema[] | null {
-    return this.schemas.length > 0 ? this.schemas : null;
+  get payload(): any[] {
+    return this.schemas.length > 0 ? this.schemas : [];
   }
 
   requireRunnable(): void {

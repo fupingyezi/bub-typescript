@@ -75,13 +75,23 @@ export class LLM {
 
     // 解析模型和提供商
     const modelParts = resolvedModel.split(":");
-    const resolvedProvider =
+    let resolvedProvider =
       provider || (modelParts.length > 1 ? modelParts[0] : "");
-    const resolvedModelId = modelParts.length > 1 ? modelParts.slice(1).join(":") : resolvedModel;
+    const resolvedModelId =
+      modelParts.length > 1 ? modelParts.slice(1).join(":") : resolvedModel;
 
+    // 如果没有提供 provider，使用默认值 "unknown"
     if (!resolvedProvider) {
-      throw new Error(
-        "Provider must be specified either in the model string or as a separate option",
+      console.log(
+        `[LLM] No provider specified, using default "unknown" for model: ${resolvedModel}`,
+      );
+      resolvedProvider = "unknown";
+    }
+
+    // 如果从 model 字符串中解析出了 provider，并且用户也提供了 provider，检查是否匹配
+    if (modelParts.length > 1 && provider && provider !== modelParts[0]) {
+      console.warn(
+        `[LLM] Provider mismatch: specified "${provider}" but model string suggests "${modelParts[0]}", using "${provider}"`,
       );
     }
 
@@ -424,6 +434,10 @@ export class LLM {
   }
 
   toString(): string {
-    return `<LLM provider=${this._core.provider} model=${this._core.model} fallbackModels=${this._core.fallback_models} maxRetries=${this._core.max_retries}>`;
+    const modelDisplay =
+      this._core.provider === "unknown"
+        ? this._core.model
+        : `${this._core.provider}:${this._core.model}`;
+    return `<LLM provider=${this._core.provider} model=${modelDisplay} fallbackModels=${this._core.fallback_models.join(",")} maxRetries=${this._core.max_retries}>`;
   }
 }

@@ -107,29 +107,40 @@ export class LLMCore {
           "Model name cannot contain ':'",
         );
       }
+      console.log(
+        `[LLMCore] Using explicit provider: ${provider} for model: ${model}`,
+      );
       return {
         provider,
         model,
       };
     }
 
-    if (!model.includes(":")) {
-      throw new RepbulicError(
-        ErrorKind.INVALID_INPUT,
-        "Model must be in 'provider:model' format.",
+    // 如果没有提供 provider，尝试从 model 字符串中解析
+    if (model.includes(":")) {
+      const [providerName, modelId] = model.split(":");
+      if (!providerName || !modelId) {
+        throw new RepbulicError(
+          ErrorKind.INVALID_INPUT,
+          "Model must be in 'provider:model' format.",
+        );
+      }
+      console.log(
+        `[LLMCore] Auto-resolved provider: ${providerName} for model: ${modelId}`,
       );
+      return {
+        provider: providerName,
+        model: modelId,
+      };
     }
 
-    const [providerName, modelId] = model.split(":");
-    if (!providerName || !modelId) {
-      throw new RepbulicError(
-        ErrorKind.INVALID_INPUT,
-        "Model must be in 'provider:model' format.",
-      );
-    }
+    // 如果没有提供 provider 且 model 不包含分隔符，使用默认 provider
+    console.log(
+      `[LLMCore] No provider specified, using default "unknown" for model: ${model}`,
+    );
     return {
-      provider: providerName,
-      model: modelId,
+      provider: "unknown",
+      model,
     };
   }
 
