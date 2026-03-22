@@ -27,14 +27,16 @@ async function runQuickStart() {
   const singleResponse = await llm.chat("Hello");
   console.log(`✓ 单轮对话响应: ${singleResponse.substring(0, 100)}...\n`);
 
-  // 3. 多轮对话测试 - 通过连续调用 chat 实现上下文保持
+  // 3. 多轮对话测试 - 使用 Tape 保持上下文
   console.log("3. 多轮对话测试...");
+  const sessionTape = llm.tape("quickstart-session");
+  sessionTape.handoff("ticket_001", { customer: "小明", action: "问好" });
   console.log("   第一轮：询问名字");
-  const response1 = await llm.chat("我的名字叫小明，你好！");
+  const response1 = await sessionTape.chat("我的名字叫小明，你好！");
   console.log(`   助手回复: ${response1.substring(0, 80)}...`);
 
   console.log("   第二轮：询问之前的对话内容");
-  const response2 = await llm.chat("我刚才告诉你了什么？");
+  const response2 = await sessionTape.chat("我刚才告诉你了什么？");
   console.log(`   助手回复: ${response2.substring(0, 80)}...`);
   console.log("✓ 多轮对话测试完成\n");
 

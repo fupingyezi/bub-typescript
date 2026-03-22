@@ -42,14 +42,14 @@ export function findAnchorIndex(
     for (let i = startIndex; i < entries.length; i++) {
       const entry = entries[i];
       if (entry.kind !== "anchor") continue;
-      if (!name && entry.payload.name !== name) continue;
+      if (name !== null && entry.payload.name !== name) continue;
       return i;
     }
   } else {
     for (let i = entries.length - 1; i >= startIndex; i--) {
       const entry = entries[i];
       if (entry.kind !== "anchor") continue;
-      if (!name && entry.payload.name !== name) continue;
+      if (name !== null && entry.payload.name !== name) continue;
       return i;
     }
   }
