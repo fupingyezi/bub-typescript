@@ -8,7 +8,12 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest run",
-    "example": "tsx examples/complete-workflow.ts"
+    "example": "tsx examples/complete-workflow.ts",
+    "example:chat": "tsx examples/01_quickstart_chat.ts",
+    "example:tools": "tsx examples/02_tools_auto_and_manual.ts",
+    "example:tape": "tsx examples/03_tape_handoff_and_query.ts",
+    "example:stream": "tsx examples/04_stream_events.ts",
+    "example:text": "tsx examples/05_text_and_embeddings.ts"
   },
   "keywords": [],
   "author": "",
