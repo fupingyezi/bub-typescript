@@ -37,7 +37,7 @@ export class LLM {
       apiKeyResolver?: any;
       apiBase?: string | Record<string, string>;
       clientArgs?: Record<string, any>;
-      apiFormat?: "completion" | "response" | "messages";
+      apiFormat?: "invoke" | "stream";
       verbose?: number;
       tapeStore?: TapeStore | AsyncTapeStore;
       context?: TapeContext;
@@ -52,7 +52,7 @@ export class LLM {
       apiKeyResolver,
       apiBase,
       clientArgs = {},
-      apiFormat = "completion",
+      apiFormat = "invoke",
       verbose = 0,
       tapeStore,
       context,
@@ -65,10 +65,8 @@ export class LLM {
     if (maxRetries < 0) {
       throw new Error("maxRetries must be >= 0");
     }
-    if (!["completion", "response", "messages"].includes(apiFormat)) {
-      throw new Error(
-        "apiFormat must be 'completion', 'response', or 'messages'",
-      );
+    if (!["invoke", "stream"].includes(apiFormat)) {
+      throw new Error("apiFormat must be 'invoke' or 'stream'");
     }
 
     const resolvedModel = model || DEFAULT_MODEL;
@@ -243,12 +241,14 @@ export class LLM {
       [key: string]: any;
     },
   ): Promise<Record<string, any>[]> {
-    throw new Error("toolCalls is not implemented in ChatClient");
+    return this._chatClient.toolCallsAsync(prompt, {
+      ...options,
+    });
   }
 
   async toolCallsAsync(
-    _prompt: string | null = null,
-    _options?: {
+    prompt: string | null = null,
+    options?: {
       systemPrompt?: string | null;
       model?: string | null;
       provider?: string | null;
@@ -260,12 +260,14 @@ export class LLM {
       [key: string]: any;
     },
   ): Promise<Record<string, any>[]> {
-    throw new Error("toolCallsAsync is not implemented in ChatClient");
+    return await this._chatClient.toolCallsAsync(prompt, {
+      ...options,
+    });
   }
 
-  runTools(
-    _prompt: string | null = null,
-    _options?: {
+  async runTools(
+    prompt: string | null = null,
+    options?: {
       systemPrompt?: string | null;
       model?: string | null;
       provider?: string | null;
@@ -277,12 +279,12 @@ export class LLM {
       [key: string]: any;
     },
   ): Promise<ToolAutoResult> {
-    throw new Error("runTools is not implemented in ChatClient");
+    return await this.runToolsAsync(prompt, options);
   }
 
   async runToolsAsync(
-    _prompt: string | null = null,
-    _options?: {
+    prompt: string | null = null,
+    options?: {
       systemPrompt?: string | null;
       model?: string | null;
       provider?: string | null;
@@ -294,7 +296,31 @@ export class LLM {
       [key: string]: any;
     },
   ): Promise<ToolAutoResult> {
-    throw new Error("runToolsAsync is not implemented in ChatClient");
+    const toolCalls = await this._chatClient.toolCallsAsync(prompt, {
+      ...options,
+    });
+
+    if (!toolCalls || toolCalls.length === 0) {
+      const textResult = await this._chatClient.create(prompt, {
+        ...options,
+      });
+      return ToolAutoResult.textResult(textResult);
+    }
+
+    const toolResults = await this.tools.executeAsync(
+      toolCalls,
+      options?.tools || null,
+      null,
+    );
+
+    if (toolResults.error) {
+      return ToolAutoResult.errorResult(toolResults.error, {
+        toolCalls,
+        toolResults: toolResults.toolResults,
+      });
+    }
+
+    return ToolAutoResult.toolsResult(toolCalls, toolResults.toolResults);
   }
 
   if_(
@@ -400,8 +426,8 @@ export class LLM {
   }
 
   streamEvents(
-    _prompt: string | null = null,
-    _options?: {
+    prompt: string | null = null,
+    options?: {
       systemPrompt?: string | null;
       model?: string | null;
       provider?: string | null;
@@ -413,12 +439,14 @@ export class LLM {
       [key: string]: any;
     },
   ): Promise<AsyncStreamEvents> {
-    throw new Error("streamEvents is not implemented in ChatClient");
+    return this._chatClient.streamEventsAsync(prompt, {
+      ...options,
+    });
   }
 
   async streamEventsAsync(
-    _prompt: string | null = null,
-    _options?: {
+    prompt: string | null = null,
+    options?: {
       systemPrompt?: string | null;
       model?: string | null;
       provider?: string | null;
@@ -430,7 +458,9 @@ export class LLM {
       [key: string]: any;
     },
   ): Promise<AsyncStreamEvents> {
-    throw new Error("streamEventsAsync is not implemented in ChatClient");
+    return await this._chatClient.streamEventsAsync(prompt, {
+      ...options,
+    });
   }
 
   toString(): string {

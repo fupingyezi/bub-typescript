@@ -4,11 +4,11 @@ import {
   SystemMessage,
   AIMessage,
   ToolMessage,
+  BaseMessage,
 } from "@langchain/core/messages";
 import { createLangchainLLMClient } from "./client-registry";
 import { ErrorKindType, ErrorKind } from "@/types";
 import { RepbulicError } from "./errors";
-import { normalizeResponses_kwargs } from "./request-adapters";
 
 export type AttemptDecision = "retry_same_model" | "retry_next_model";
 
@@ -17,8 +17,13 @@ export type AttemptOutCome = {
   decision: AttemptDecision;
 };
 
+export type TransportKind = "invoke" | "stream";
+
+export type StreamMode = "messages" | "updates" | "values";
+
 export type TransportResponse = {
-  transport: "completion" | "response" | "messages";
+  transport: TransportKind;
+  streamMode?: StreamMode;
   payload: any;
 };
 
@@ -45,8 +50,8 @@ export class LLMCore {
   ) => Promise<string | undefined> | undefined;
   private _api_base: string | Record<string, string> | undefined;
   private _client_args: Record<string, any> | undefined;
-  private _api_format: "completion" | "response" | "messages";
-  private _verbose: number;
+  private _api_format: "invoke" | "stream";
+  private _verbose: number; // 详细程度级别，0-不详细，1-详细，2-详细且包含调试信息
   private _error_classifier: (error: Error) => ErrorKindType | undefined;
   private _client_cache: Record<string, any> = {};
 
@@ -59,7 +64,7 @@ export class LLMCore {
     api_key_resolver: (key: string) => Promise<string | undefined> | undefined,
     api_base: string | Record<string, string> | undefined,
     client_args: Record<string, any> | undefined,
-    api_format: "completion" | "response" | "messages",
+    api_format: "invoke" | "stream",
     verbose: number,
     error_classifier: (error: Error) => ErrorKindType | undefined,
   ) {
@@ -96,6 +101,12 @@ export class LLMCore {
     return Math.max(this._max_retries + 1, 1);
   }
 
+  /**
+   * 解析模型提供商
+   * @param model 模型名称，可以是"provider:model"格式或仅模型名称
+   * @param provider 提供商名称，可选
+   * @returns 包含provider和model的对象
+   */
   static resolveModelProvider(
     model: string,
     provider: string | undefined,
@@ -144,6 +155,11 @@ export class LLMCore {
     };
   }
 
+  /**
+   * 解析备用模型
+   * @param model 备用模型名称，可以是"provider:model"格式或仅模型名称
+   * @returns 包含provider和model的对象
+   */
   resolveFallback(model: string): Record<string, any> {
     if (model.includes(":")) {
       const [providerName, modelId] = model.split(":");
@@ -170,6 +186,12 @@ export class LLMCore {
     );
   }
 
+  /**
+   * 获取模型候选列表
+   * @param overrideModel 覆盖的模型名称，可选
+   * @param overrideProvider 覆盖的提供商名称，可选
+   * @returns 模型候选列表，每个元素是[provider, model]的元组
+   */
   modelCandidates(
     overrideModel: string | undefined,
     overrideProvider: string | undefined,
@@ -190,6 +212,12 @@ export class LLMCore {
     return candidates;
   }
 
+  /**
+   * 迭代获取客户端实例
+   * @param overrideModel 覆盖的模型名称，可选
+   * @param overrideProvider 覆盖的提供商名称，可选
+   * @returns 异步生成器，产生[provider, model, client]的元组
+   */
   async *iterClients(
     overrideModel: string | undefined,
     overrideProvider: string | undefined,
@@ -202,6 +230,11 @@ export class LLMCore {
     }
   }
 
+  /**
+   * 解析API密钥
+   * @param provider 提供商名称
+   * @returns API密钥
+   */
   private async _resolveApiKey(provider: string): Promise<string | undefined> {
     if (typeof this._api_key === "object" && this._api_key !== null) {
       const key = this._api_key[provider];
@@ -224,6 +257,11 @@ export class LLMCore {
     return undefined;
   }
 
+  /**
+   * 解析API基础URL
+   * @param provider 提供商名称
+   * @returns API基础URL
+   */
   private _resolveApiBase(provider: string): string | undefined {
     if (typeof this._api_base === "object" && this._api_base !== null) {
       return this._api_base[provider];
@@ -231,6 +269,13 @@ export class LLMCore {
     return this._api_base;
   }
 
+  /**
+   * 生成缓存键
+   * @param provider 提供商名称
+   * @param apiKey API密钥
+   * @param apiBase API基础URL
+   * @returns 缓存键
+   */
   private _freezeCacheKey(
     provider: string,
     apiKey: string | undefined,
@@ -268,6 +313,11 @@ export class LLMCore {
     return JSON.stringify(payload);
   }
 
+  /**
+   * 根据对应供应商获取相关的client实例
+   * @param provider
+   * @returns Langchian的ChatOpenAI实例
+   */
   async getClient(provider: string): Promise<ChatOpenAI> {
     const apiKey = await this._resolveApiKey(provider);
     const apiBase = this._resolveApiBase(provider);
@@ -286,6 +336,13 @@ export class LLMCore {
     return this._client_cache[cacheKey];
   }
 
+  /**
+   * 记录错误
+   * @param error 错误对象
+   * @param provider 提供商名称
+   * @param model 模型ID
+   * @param attempt 尝试次数
+   */
   private logError(
     error: RepbulicError,
     provider: string,
@@ -304,6 +361,11 @@ export class LLMCore {
     }
   }
 
+  /**
+   * 提取错误状态码
+   * @param exc 异常对象
+   * @returns 状态码
+   */
   private static _extractStatusCode(exc: Error): number | undefined {
     const status = (exc as any).status_code;
     if (typeof status === "number") {
@@ -318,10 +380,21 @@ export class LLMCore {
     return undefined;
   }
 
+  /**
+   * 检查文本是否匹配任一模式
+   * @param text 文本
+   * @param patterns 模式列表
+   * @returns 是否匹配
+   */
   private static _textMatches(text: string, patterns: string[]): boolean {
     return patterns.some((pattern) => new RegExp(pattern, "i").test(text));
   }
 
+  /**
+   * 根据HTTP状态码分类异常
+   * @param exc 异常对象
+   * @returns 异常类型
+   */
   private _classifyByHttpStatus(exc: Error): ErrorKindType | undefined {
     const status = LLMCore._extractStatusCode(exc);
     if (status === 401 || status === 403) {
@@ -339,6 +412,11 @@ export class LLMCore {
     return undefined;
   }
 
+  /**
+   * 根据文本特征分类异常
+   * @param exc 异常对象
+   * @returns 异常类型
+   */
   private _classifyByTextSignature(exc: Error): ErrorKindType | undefined {
     const name = exc.constructor.name.toLowerCase();
     const text = `${name} ${exc.message}`.toLowerCase();
@@ -383,6 +461,11 @@ export class LLMCore {
     return undefined;
   }
 
+  /**
+   * 分类异常
+   * @param exc 异常对象
+   * @returns 异常类型
+   */
   classifyException(exc: Error): ErrorKindType {
     if (exc instanceof RepbulicError) {
       return (exc as any).kind;
@@ -414,10 +497,23 @@ export class LLMCore {
     return ErrorKind.UNKNOWN;
   }
 
+  /**
+   * 判断是否应该重试
+   * @param kind 异常类型
+   * @returns 是否应该重试
+   */
   shouldRetry(kind: ErrorKindType): boolean {
     return kind === ErrorKind.TEMPORARY || kind === ErrorKind.PROVIDER;
   }
 
+  /**
+   * 包装异常
+   * @param exc 原始异常对象
+   * @param kind 异常类型
+   * @param provider 提供商名称
+   * @param model 模型ID
+   * @returns 包装后的RepbulicError对象
+   */
   wrapError(
     exc: Error,
     kind: ErrorKindType,
@@ -428,6 +524,14 @@ export class LLMCore {
     return new RepbulicError(kind, message, exc);
   }
 
+  /**
+   * 处理尝试错误
+   * @param exc 异常对象
+   * @param providerName 提供商名称
+   * @param modelId 模型ID
+   * @param attempt 尝试次数
+   * @returns 尝试结果
+   */
   private _handleAttemptError(
     exc: Error,
     providerName: string,
@@ -463,241 +567,19 @@ export class LLMCore {
     };
   }
 
-  private _decideKwargsForProvider(
-    provider: string,
-    maxTokens: number | undefined,
-    stream: boolean,
-    kwargs: Record<string, any>,
-  ): Record<string, any> {
-    const cleanKwargs = { ...kwargs };
-    const maxTokensArg = "max_tokens";
-    if (maxTokensArg in cleanKwargs) {
-      return { ...cleanKwargs, stream };
-    }
-    return { ...cleanKwargs, [maxTokensArg]: maxTokens, stream };
-  }
-
-  private _decideResponsesKwargs(
-    maxTokens: number | undefined,
-    stream: boolean,
-    kwargs: Record<string, any>,
-    dropExtraHeaders: boolean = true,
-  ): Record<string, any> {
-    const cleanKwargs = { ...kwargs };
-    if (dropExtraHeaders) {
-      delete cleanKwargs.extra_headers;
-    }
-    const normalizedKwargs = normalizeResponses_kwargs(cleanKwargs);
-    if ("max_output_tokens" in normalizedKwargs || maxTokens === undefined) {
-      return { ...normalizedKwargs, stream };
-    }
-    return { ...normalizedKwargs, max_output_tokens: maxTokens, stream };
-  }
-
-  private _withDefaultCompletionStreamOptions(
-    providerName: string,
-    stream: boolean,
-    kwargs: Record<string, any>,
-  ): Record<string, any> {
-    if (!stream) {
-      return kwargs;
-    }
-    if ("stream_options" in kwargs) {
-      return kwargs;
-    }
-    return { ...kwargs, stream_options: { include_usage: true } };
-  }
-
-  private _withResponsesReasoning(
-    kwargs: Record<string, any>,
-    reasoningEffort: any | undefined,
-  ): Record<string, any> {
-    if (reasoningEffort === undefined) {
-      return kwargs;
-    }
-    if ("reasoning" in kwargs) {
-      return kwargs;
-    }
-    return { ...kwargs, reasoning: { effort: reasoningEffort } };
-  }
-
-  private _convertToolsForResponses(
-    toolsPayload: Record<string, any>[] | undefined,
-  ): Record<string, any>[] | undefined {
-    if (!toolsPayload || toolsPayload.length === 0) {
-      return toolsPayload;
-    }
-
-    const convertedTools: Record<string, any>[] = [];
-    for (const tool of toolsPayload) {
-      const func = tool.function;
-      if (typeof func === "object" && func !== null) {
-        const converted: Record<string, any> = {
-          type: tool.type || "function",
-          name: func.name,
-          description: func.description || "",
-          parameters: func.parameters || {},
-        };
-        if ("strict" in func) {
-          converted.strict = func.strict;
-        }
-        convertedTools.push(converted);
-        continue;
-      }
-      convertedTools.push({ ...tool });
-    }
-    return convertedTools;
-  }
-
-  private _selectedTransport(
-    client: ChatOpenAI,
-    providerName: string,
-    modelId: string,
-    toolsPayload: Record<string, any>[] | undefined,
-  ): "completion" | "response" | "messages" {
-    const forcedTransport = (client as any).PREFERRED_TRANSPORT;
-    if (
-      forcedTransport === "completion" ||
-      forcedTransport === "response" ||
-      forcedTransport === "messages"
-    ) {
-      return forcedTransport;
-    }
-
-    if (this._api_format === "completion") {
-      return "completion";
-    }
-
-    if (this._api_format === "messages") {
-      if (!this._supportsMessagesFormat(providerName, modelId)) {
-        throw new RepbulicError(
-          ErrorKind.INVALID_INPUT,
-          `${providerName}:${modelId}: messages format is only valid for Anthropic models`,
-        );
-      }
-      return "messages";
-    }
-
-    const reason = this._responsesRejectionReason(
-      providerName,
-      modelId,
-      Boolean(toolsPayload),
-      Boolean((client as any).SUPPORTS_RESPONSES),
-    );
-
-    if (reason) {
-      throw new RepbulicError(
-        ErrorKind.INVALID_INPUT,
-        `${providerName}:${modelId}: ${reason}`,
-      );
-    }
-
-    return "response";
-  }
-
-  private _supportsMessagesFormat(
-    providerName: string,
-    modelId: string,
-  ): boolean {
-    return providerName === "anthropic";
-  }
-
-  private _responsesRejectionReason(
-    providerName: string,
-    modelId: string,
-    hasTools: boolean,
-    supportsResponses: boolean,
-  ): string | undefined {
-    if (!supportsResponses) {
-      return "responses format is not supported by this client";
-    }
-    return undefined;
-  }
-
-  private _splitMessagesForResponses(
-    messages: Record<string, any>[],
-  ): [string | undefined, Record<string, any>[]] {
-    const instructionsParts: string[] = [];
-    const filteredMessages: Record<string, any>[] = [];
-
-    for (const message of messages) {
-      const role = message.role;
-      if (role === "system" || role === "developer") {
-        const content = message.content;
-        if (content !== null && content !== "") {
-          instructionsParts.push(String(content));
-        }
-        continue;
-      }
-      filteredMessages.push(message);
-    }
-
-    const instructions = instructionsParts
-      .filter((part) => part.trim())
-      .join("\n\n");
-
-    return [
-      instructions || undefined,
-      LLMCore._convertMessagesToResponsesInput(filteredMessages),
-    ];
-  }
-
-  private static _convertMessagesToResponsesInput(
-    messages: Record<string, any>[],
-  ): Record<string, any>[] {
-    const inputItems: Record<string, any>[] = [];
-
-    for (const message of messages) {
-      const role = message.role;
-      const content = message.content;
-
-      if (
-        (role === "user" || role === "assistant") &&
-        content !== null &&
-        content !== ""
-      ) {
-        inputItems.push({
-          role,
-          content,
-          type: "message",
-        });
-      }
-
-      if (role === "assistant") {
-        const toolCalls = message.tool_calls || [];
-        for (let index = 0; index < toolCalls.length; index++) {
-          const toolCall = toolCalls[index];
-          const func = toolCall.function || {};
-          const name = func.name;
-          if (!name) {
-            continue;
-          }
-          const callId = toolCall.id || toolCall.call_id || `call_${index}`;
-          inputItems.push({
-            type: "function_call",
-            name,
-            arguments: func.arguments || "",
-            call_id: callId,
-          });
-        }
-      }
-
-      if (role === "tool") {
-        const callId = message.tool_call_id || message.call_id;
-        if (!callId) {
-          continue;
-        }
-        inputItems.push({
-          type: "function_call_output",
-          call_id: callId,
-          output: message.content || "",
-        });
-      }
-    }
-
-    return inputItems;
-  }
-
+  /**
+   * 运行聊天
+   * @param messagesPayload 消息负载
+   * @param toolsPayload 工具负载
+   * @param model 模型名称，可选
+   * @param provider 提供商名称，可选
+   * @param maxTokens 最大token数
+   * @param stream 是否流式传输
+   * @param streamMode 流模式 (messages, updates, values)
+   * @param reasoningEffort 推理努力程度
+   * @param kwargs 其他参数
+   * @returns 传输响应
+   */
   async runChat(
     messagesPayload: Record<string, any>[],
     toolsPayload: Record<string, any>[] | undefined,
@@ -705,6 +587,7 @@ export class LLMCore {
     provider: string | undefined,
     maxTokens: number | undefined,
     stream: boolean,
+    streamMode: StreamMode | undefined,
     reasoningEffort: any | undefined,
     kwargs: Record<string, any>,
   ): Promise<TransportResponse> {
@@ -729,6 +612,7 @@ export class LLMCore {
             toolsPayload,
             maxTokens,
             stream,
+            streamMode,
             reasoningEffort,
             kwargs,
           );
@@ -767,6 +651,35 @@ export class LLMCore {
     );
   }
 
+  /**
+   * 选择传输调用方式
+   * @param client ChatOpenAI客户端实例
+   * @param stream 是否流式传输
+   * @returns 传输类型
+   */
+  private _selectedTransport(
+    client: ChatOpenAI,
+    stream: boolean,
+  ): TransportKind {
+    if (stream) {
+      return "stream";
+    }
+    return "invoke";
+  }
+
+  /**
+   * 调用客户端 - LangChain 统一风格
+   * @param client ChatOpenAI客户端实例
+   * @param providerName 提供商名称
+   * @param modelId 模型ID
+   * @param messagesPayload 消息负载
+   * @param toolsPayload 工具负载
+   * @param maxTokens 最大token数
+   * @param stream 是否流式传输
+   * @param reasoningEffort 推理努力程度
+   * @param kwargs 其他参数
+   * @returns 传输响应
+   */
   private async _callClient(
     client: ChatOpenAI,
     providerName: string,
@@ -775,130 +688,94 @@ export class LLMCore {
     toolsPayload: Record<string, any>[] | undefined,
     maxTokens: number | undefined,
     stream: boolean,
+    streamMode: StreamMode | undefined,
     reasoningEffort: any | undefined,
     kwargs: Record<string, any>,
   ): Promise<TransportResponse> {
-    const transport = this._selectedTransport(
-      client,
-      providerName,
-      modelId,
-      toolsPayload,
-    );
+    const transport = this._selectedTransport(client, stream);
+    const langChainMessages = this._convertToLangChainMessages(messagesPayload);
 
-    if (transport === "response") {
-      return this._callResponses(
-        client,
-        providerName,
-        modelId,
-        messagesPayload,
-        toolsPayload,
-        maxTokens,
-        stream,
-        reasoningEffort,
-        kwargs,
-      );
+    const invokeOptions: Record<string, any> = {
+      ...kwargs,
+    };
+
+    if (maxTokens !== undefined) {
+      invokeOptions.maxTokens = maxTokens;
     }
 
-    return this._callCompletionLike(
-      transport,
-      client,
-      providerName,
-      modelId,
-      messagesPayload,
-      toolsPayload,
-      maxTokens,
-      stream,
-      reasoningEffort,
-      kwargs,
-    );
+    if (stream) {
+      invokeOptions.stream = true;
+      if (streamMode) {
+        invokeOptions.streamMode = streamMode;
+      }
+    }
+
+    if (reasoningEffort !== undefined) {
+      invokeOptions.reasoningEffort = reasoningEffort;
+    }
+
+    if (toolsPayload && toolsPayload.length > 0) {
+      invokeOptions.tools = this._convertToolsForLangChain(toolsPayload);
+    }
+
+    let payload: any;
+    if (transport === "stream") {
+      payload = await client.stream(langChainMessages, invokeOptions);
+    } else {
+      payload = await client.invoke(langChainMessages, invokeOptions);
+    }
+
+    return { transport, streamMode, payload };
   }
 
-  private async _callResponses(
-    client: ChatOpenAI,
-    providerName: string,
-    modelId: string,
-    messagesPayload: Record<string, any>[],
-    toolsPayload: Record<string, any>[] | undefined,
-    maxTokens: number | undefined,
-    stream: boolean,
-    reasoningEffort: any | undefined,
-    kwargs: Record<string, any>,
-  ): Promise<TransportResponse> {
-    const [instructions, inputItems] =
-      this._splitMessagesForResponses(messagesPayload);
-    const responsesKwargs = this._withResponsesReasoning(
-      kwargs,
-      reasoningEffort,
-    );
+  /**
+   * 将工具负载转换为LangChain格式
+   * LangChain的工具格式为: { type: "function", function: { name, description, parameters } }
+   * @param toolsPayload 原始工具负载
+   * @returns LangChain格式的工具数组
+   */
+  private _convertToolsForLangChain(
+    toolsPayload: Record<string, any>[],
+  ): Record<string, any>[] {
+    return toolsPayload.map((tool) => {
+      if (tool.type === "function" && tool.function) {
+        return {
+          type: "function",
+          function: {
+            name: tool.function.name || "",
+            description: tool.function.description || "",
+            parameters: tool.function.parameters || {
+              type: "object",
+              properties: {},
+            },
+          },
+        };
+      }
 
-    const finalKwargs = this._decideResponsesKwargs(
-      maxTokens,
-      stream,
-      responsesKwargs,
-      !this._preservesResponsesExtraHeaders(client),
-    );
+      if (tool.type === "function") {
+        return tool;
+      }
 
-    const langChainMessages = this._convertToLangChainMessages(messagesPayload);
-
-    const payload = await client.invoke(langChainMessages, {
-      tools: this._convertToolsForResponses(toolsPayload),
-      ...finalKwargs,
+      return {
+        type: "function",
+        function: {
+          name: tool.name || "",
+          description: tool.description || "",
+          parameters: tool.parameters || { type: "object", properties: {} },
+        },
+      };
     });
-
-    return {
-      transport: "response",
-      payload,
-    };
   }
 
-  private async _callCompletionLike(
-    transport: "completion" | "messages",
-    client: ChatOpenAI,
-    providerName: string,
-    modelId: string,
-    messagesPayload: Record<string, any>[],
-    toolsPayload: Record<string, any>[] | undefined,
-    maxTokens: number | undefined,
-    stream: boolean,
-    reasoningEffort: any | undefined,
-    kwargs: Record<string, any>,
-  ): Promise<TransportResponse> {
-    let completionKwargs = this._decideKwargsForProvider(
-      providerName,
-      maxTokens,
-      stream,
-      kwargs,
-    );
-    completionKwargs = this._withDefaultCompletionStreamOptions(
-      providerName,
-      stream,
-      completionKwargs,
-    );
-
-    const langChainMessages = this._convertToLangChainMessages(messagesPayload);
-
-    const payload = await client.invoke(langChainMessages, {
-      tools: toolsPayload,
-      reasoningEffort: reasoningEffort,
-      ...completionKwargs,
-    });
-
-    return {
-      transport,
-      payload,
-    };
-  }
-
-  private _preservesResponsesExtraHeaders(client: ChatOpenAI): boolean {
-    return Boolean((client as any).PRESERVE_EXTRA_HEADERS_IN_RESPONSES);
-  }
-
+  /**
+   * 将原始messages转化为LangChain的封装定义格式
+   * @param messages 原始消息列表
+   * @returns LangChain格式的BaseMessage数组
+   */
   private _convertToLangChainMessages(
     messages: Record<string, any>[],
-  ): Array<HumanMessage | SystemMessage | AIMessage | ToolMessage> {
-    const langChainMessages: Array<
-      HumanMessage | SystemMessage | AIMessage | ToolMessage
-    > = [];
+  ): BaseMessage[] {
+    const langChainMessages: BaseMessage[] = [];
 
     for (const message of messages) {
       const role = message.role;
@@ -906,26 +783,58 @@ export class LLMCore {
 
       switch (role) {
         case "system":
-        case "developer":
-          langChainMessages.push(new SystemMessage(content));
+        case "developer": {
+          const systemContent = typeof content === "string" ? content : "";
+          langChainMessages.push(new SystemMessage(systemContent));
           break;
-        case "user":
-          langChainMessages.push(new HumanMessage(content));
+        }
+        case "user": {
+          const userContent = typeof content === "string" ? content : "";
+          langChainMessages.push(new HumanMessage(userContent));
           break;
-        case "assistant":
-          const aiMessage = new AIMessage(content);
-          if (message.tool_calls && message.tool_calls.length > 0) {
-            (aiMessage as any).tool_calls = message.tool_calls;
+        }
+        case "assistant": {
+          const assistantContent = typeof content === "string" ? content : "";
+          const toolCalls = message.tool_calls;
+
+          if (toolCalls && toolCalls.length > 0) {
+            const lcToolCalls = toolCalls.map((tc: Record<string, any>) => {
+              const func = tc.function || {};
+              return {
+                id: tc.id || tc.call_id || "",
+                name: func.name || "",
+                arguments:
+                  typeof func.arguments === "string"
+                    ? func.arguments
+                    : JSON.stringify(func.arguments || {}),
+              };
+            });
+
+            langChainMessages.push(
+              new AIMessage({
+                content: assistantContent,
+                tool_calls: lcToolCalls,
+              }),
+            );
+          } else {
+            langChainMessages.push(new AIMessage(assistantContent));
           }
-          langChainMessages.push(aiMessage);
           break;
-        case "tool":
-          const toolMessage = new ToolMessage({
-            content: content,
-            tool_call_id: message.tool_call_id || message.call_id,
-          });
-          langChainMessages.push(toolMessage);
+        }
+        case "tool": {
+          const toolContent = typeof content === "string" ? content : "";
+          const toolCallId = message.tool_call_id || message.call_id || "";
+          const toolName = message.name;
+
+          langChainMessages.push(
+            new ToolMessage({
+              content: toolContent,
+              tool_call_id: toolCallId,
+              name: toolName,
+            }),
+          );
           break;
+        }
       }
     }
 

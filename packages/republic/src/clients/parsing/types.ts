@@ -1,4 +1,4 @@
-export type TransportKind = "completion" | "responses" | "messages";
+export type ResponseFormat = "completion" | "responses" | "messages";
 
 export abstract class BaseTransportParser {
   abstract isNonStreamResponse(response: any): boolean;

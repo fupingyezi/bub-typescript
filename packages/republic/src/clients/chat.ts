@@ -1,9 +1,15 @@
-import { LLMCore } from "@/core/execution";
-import { ErrorPayload, AsyncTextStream, StreamState } from "@/core/results";
-import { ErrorKind } from "@/types";
+import { LLMCore, TransportKind } from "@/core/execution";
+import {
+  ErrorPayload,
+  AsyncTextStream,
+  StreamState,
+  StreamEvent,
+  AsyncStreamEvents,
+} from "@/core/results";
+import { ErrorKind, StreamEventKind } from "@/types";
 import { TapeContext } from "@/tape/context";
 import { TapeManager, AsyncTapeManager } from "@/tape/manager";
-import { parserForTransport, TransportKind } from "./parsing";
+import { parserForTransport, ResponseFormat } from "./parsing";
 import { field } from "./parsing/common";
 import { normalizeTools } from "@/tools/schema";
 
@@ -258,12 +264,28 @@ export class ChatClient {
     return [response, null];
   }
 
-  private static _resolveTransport(
+  private static _resolveResponseFormat(
     payload: any,
     transport: TransportKind | null = null,
-  ): TransportKind {
-    if (transport !== null) {
-      return transport;
+  ): ResponseFormat {
+    if (
+      transport !== null &&
+      (transport === "invoke" || transport === "stream")
+    ) {
+      if (Array.isArray(payload)) {
+        return "responses";
+      }
+      if (field(payload, "output") !== null) {
+        return "responses";
+      }
+      if (field(payload, "output_text") !== null) {
+        return "responses";
+      }
+      const eventType = field(payload, "type");
+      if (typeof eventType === "string" && eventType.startsWith("response.")) {
+        return "responses";
+      }
+      return "completion";
     }
     if (Array.isArray(payload)) {
       return "responses";
@@ -285,8 +307,11 @@ export class ChatClient {
     payload: any,
     transport: TransportKind | null = null,
   ): any {
-    const effectiveTransport = ChatClient._resolveTransport(payload, transport);
-    return parserForTransport(effectiveTransport);
+    const responseFormat = ChatClient._resolveResponseFormat(
+      payload,
+      transport,
+    );
+    return parserForTransport(responseFormat);
   }
 
   private _validateChatInput(
@@ -517,6 +542,74 @@ export class ChatClient {
     }
   }
 
+  async toolCallsAsync(
+    prompt: string | null = null,
+    options: {
+      systemPrompt?: string | null;
+      model?: string | null;
+      provider?: string | null;
+      messages?: MessageInput[] | null;
+      maxTokens?: number | null;
+      tape?: string | null;
+      context?: TapeContext | null;
+      tools?: ToolInput;
+      [key: string]: any;
+    } = {},
+  ): Promise<Record<string, any>[]> {
+    const {
+      systemPrompt = null,
+      model = null,
+      provider = null,
+      messages = null,
+      maxTokens = null,
+      tape = null,
+      context = null,
+      tools = null,
+      ...kwargs
+    } = options;
+
+    const prepared = await this._prepareRequestAsync(
+      prompt,
+      systemPrompt,
+      messages,
+      tape,
+      context || undefined,
+      tools,
+      true,
+      true,
+    );
+    if (prepared.contextError !== null) {
+      throw prepared.contextError;
+    }
+
+    const response = await this._core.runChat(
+      prepared.payload,
+      prepared.toolset.payload || undefined,
+      model || undefined,
+      provider || undefined,
+      maxTokens || undefined,
+      false,
+      undefined,
+      undefined,
+      kwargs,
+    );
+
+    const [payload, transport] = ChatClient._unwrapResponse(response);
+    const parser = ChatClient._parserForPayload(payload, transport);
+    const toolCalls = parser.extractToolCalls(payload);
+    const usage = this._extractUsage(payload, transport);
+
+    await this._updateTapeAsync(prepared, null, {
+      toolCalls,
+      response: payload,
+      provider,
+      model,
+      usage,
+    });
+
+    return toolCalls;
+  }
+
   async create(
     prompt: string | null = null,
     options: {
@@ -563,6 +656,7 @@ export class ChatClient {
       maxTokens || undefined,
       false,
       undefined,
+      undefined,
       kwargs,
     );
 
@@ -591,9 +685,70 @@ export class ChatClient {
       tape?: string | null;
       context?: TapeContext | null;
       tools?: ToolInput;
+      streamMode?: "messages" | "updates" | "values";
       [key: string]: any;
     } = {},
   ): Promise<AsyncTextStream> {
+    const {
+      systemPrompt = null,
+      model = null,
+      provider = null,
+      messages = null,
+      maxTokens = null,
+      tape = null,
+      context = null,
+      tools = null,
+      streamMode = undefined,
+      ...kwargs
+    } = options;
+
+    const prepared = await this._prepareRequestAsync(
+      prompt,
+      systemPrompt,
+      messages,
+      tape,
+      context || undefined,
+      tools,
+    );
+    if (prepared.contextError !== null) {
+      throw prepared.contextError;
+    }
+
+    const response = await this._core.runChat(
+      prepared.payload,
+      prepared.toolset.payload || undefined,
+      model || undefined,
+      provider || undefined,
+      maxTokens || undefined,
+      true,
+      streamMode,
+      undefined,
+      kwargs,
+    );
+
+    return this._buildAsyncTextStream(
+      prepared,
+      response,
+      provider || this._core.provider,
+      model || this._core.model,
+      0,
+    );
+  }
+
+  async streamEventsAsync(
+    prompt: string | null = null,
+    options: {
+      systemPrompt?: string | null;
+      model?: string | null;
+      provider?: string | null;
+      messages?: MessageInput[] | null;
+      maxTokens?: number | null;
+      tape?: string | null;
+      context?: TapeContext | null;
+      tools?: ToolInput;
+      [key: string]: any;
+    } = {},
+  ): Promise<AsyncStreamEvents> {
     const {
       systemPrompt = null,
       model = null,
@@ -626,16 +781,107 @@ export class ChatClient {
       maxTokens || undefined,
       true,
       undefined,
+      undefined,
       kwargs,
     );
 
-    return this._buildAsyncTextStream(
+    return this._buildAsyncStreamEvents(
       prepared,
       response,
       provider || this._core.provider,
       model || this._core.model,
-      0,
     );
+  }
+
+  private async _buildAsyncStreamEvents(
+    prepared: PreparedChat,
+    response: any,
+    providerName: string,
+    modelId: string,
+  ): Promise<AsyncStreamEvents> {
+    const { transport, payload } = response;
+    const state: StreamState = { error: null, usage: null };
+    const assembler = new ToolCallAssembler();
+    let usage: Record<string, any> | null = null;
+    let finalText = "";
+    const toolCallDeltas: Record<string, any>[] = [];
+
+    const self = this;
+
+    async function* _iterator(): AsyncGenerator<StreamEvent> {
+      try {
+        if (transport === "stream" && Symbol.asyncIterator in payload) {
+          for await (const chunk of payload) {
+            const deltas = self._extractChunkToolCallDeltas(chunk, transport);
+            if (deltas && deltas.length > 0) {
+              assembler.addDeltas(deltas);
+              for (const delta of deltas) {
+                yield new StreamEvent("tool_call", delta);
+              }
+            }
+            const text = self._extractChunkText(chunk, transport);
+            if (text) {
+              finalText += text;
+              yield new StreamEvent("text", { text });
+            }
+            const chunkUsage = self._extractUsage(chunk, transport);
+            if (chunkUsage) {
+              usage = chunkUsage;
+            }
+          }
+        } else if (Array.isArray(payload)) {
+          for (const chunk of payload) {
+            const deltas = self._extractChunkToolCallDeltas(chunk, transport);
+            if (deltas && deltas.length > 0) {
+              assembler.addDeltas(deltas);
+              for (const delta of deltas) {
+                yield new StreamEvent("tool_call", delta);
+              }
+            }
+            const text = self._extractChunkText(chunk, transport);
+            if (text) {
+              finalText += text;
+              yield new StreamEvent("text", { text });
+            }
+            const chunkUsage = self._extractUsage(chunk, transport);
+            if (chunkUsage) {
+              usage = chunkUsage;
+            }
+          }
+        } else {
+          const deltas = self._extractChunkToolCallDeltas(payload, transport);
+          if (deltas && deltas.length > 0) {
+            assembler.addDeltas(deltas);
+            for (const delta of deltas) {
+              yield new StreamEvent("tool_call", delta);
+            }
+          }
+          const text = self._extractText(payload, transport);
+          if (text) {
+            finalText = text;
+            yield new StreamEvent("text", { text });
+          }
+          usage = self._extractUsage(payload, transport);
+        }
+
+        if (usage) {
+          yield new StreamEvent("usage", { usage });
+        }
+        yield new StreamEvent("final", { text: finalText });
+      } catch (exc) {
+        state.error = new ErrorPayload(ErrorKind.PROVIDER, String(exc));
+        yield new StreamEvent("error", { error: state.error });
+      }
+    }
+
+    await this._updateTapeAsync(prepared, finalText || null, {
+      response: payload,
+      provider: providerName,
+      model: modelId,
+      usage,
+    });
+
+    return new AsyncStreamEvents(_iterator(), state);
   }
 
   private _extractText(payload: any, transport: TransportKind | null): string {
@@ -673,6 +919,44 @@ export class ChatClient {
   ): any[] {
     const parser = ChatClient._parserForPayload(chunk, transport);
     return parser.extractChunkToolCallDeltas(chunk);
+  }
+
+  private _processStreamChunk(
+    chunk: any,
+    streamMode: "messages" | "updates" | "values" | undefined,
+  ): any {
+    if (!streamMode || streamMode === "messages") {
+      return chunk;
+    }
+
+    if (streamMode === "updates") {
+      if (chunk && typeof chunk === "object") {
+        if (chunk.data !== undefined) {
+          return chunk.data;
+        }
+        if (chunk.content !== undefined) {
+          return chunk.content;
+        }
+      }
+      return chunk;
+    }
+
+    if (streamMode === "values") {
+      if (chunk && typeof chunk === "object") {
+        if (chunk.messages !== undefined) {
+          const messages = chunk.messages;
+          if (Array.isArray(messages) && messages.length > 0) {
+            return messages[messages.length - 1];
+          }
+        }
+        if (chunk.data !== undefined) {
+          return chunk.data;
+        }
+      }
+      return chunk;
+    }
+
+    return chunk;
   }
 
   private _extractChunkText(
@@ -756,7 +1040,7 @@ export class ChatClient {
     modelId: string,
     attempt: number,
   ): Promise<AsyncTextStream> {
-    const [payload, transport] = ChatClient._unwrapResponse(response);
+    const { transport, streamMode, payload } = response;
     const state: StreamState = { error: null, usage: null };
     const parts: string[] = [];
     const assembler = new ToolCallAssembler();
@@ -766,18 +1050,39 @@ export class ChatClient {
 
     async function* _iterator(): AsyncGenerator<string> {
       try {
-        if (Array.isArray(payload)) {
-          for (const chunk of payload) {
-            const deltas = self._extractChunkToolCallDeltas(chunk, transport);
+        if (transport === "stream" && Symbol.asyncIterator in payload) {
+          for await (const chunk of payload) {
+            const processedChunk = self._processStreamChunk(chunk, streamMode);
+            const deltas = self._extractChunkToolCallDeltas(
+              processedChunk,
+              transport,
+            );
             if (deltas && deltas.length > 0) {
               assembler.addDeltas(deltas);
             }
-            const text = self._extractChunkText(chunk, transport);
+            const text = self._extractChunkText(processedChunk, transport);
             if (text) {
               parts.push(text);
               yield text;
             }
-            usage = self._extractUsage(chunk, transport) || usage;
+            usage = self._extractUsage(processedChunk, transport) || usage;
+          }
+        } else if (Array.isArray(payload)) {
+          for (const chunk of payload) {
+            const processedChunk = self._processStreamChunk(chunk, streamMode);
+            const deltas = self._extractChunkToolCallDeltas(
+              processedChunk,
+              transport,
+            );
+            if (deltas && deltas.length > 0) {
+              assembler.addDeltas(deltas);
+            }
+            const text = self._extractChunkText(processedChunk, transport);
+            if (text) {
+              parts.push(text);
+              yield text;
+            }
+            usage = self._extractUsage(processedChunk, transport) || usage;
           }
         } else {
           const text = self._extractText(payload, transport);

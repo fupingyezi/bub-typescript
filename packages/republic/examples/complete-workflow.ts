@@ -28,7 +28,7 @@ async function runCompleteWorkflow() {
 
   // 2. 测试简化的初始化方式（不需要显式指定provider）
   console.log("2. 测试简化的初始化方式...");
-  const simpleLlm = new LLM("z-ai/glm-4.5-air:free", {
+  const simpleLlm = new LLM("glm-4.5-air:free", {
     apiKey: process.env.OPENAI_API_KEY,
     apiBase: process.env.OPENAI_API_BASE,
     verbose: 1,
