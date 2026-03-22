@@ -340,6 +340,13 @@ export class ChatClient {
     return parserForTransport(responseFormat);
   }
 
+  /**
+   * 验证聊天输入
+   * @param prompt 提示词
+   * @param messages 消息列表
+   * @param systemPrompt 系统提示词
+   * @param tape Tape名称
+   */
   private _validateChatInput(
     prompt: string | null,
     messages: MessageInput[] | null,
@@ -366,6 +373,15 @@ export class ChatClient {
     }
   }
 
+  /**
+   * 准备消息
+   * @param prompt 提示词
+   * @param systemPrompt 系统提示词
+   * @param tape Tape名称
+   * @param messages 消息列表
+   * @param context Tape上下文
+   * @returns [payload, newMessages]元组
+   */
   private _prepareMessages(
     prompt: string | null,
     systemPrompt: string | null,
@@ -408,6 +424,15 @@ export class ChatClient {
     return [payload, [userMessage]];
   }
 
+  /**
+   * 异步准备消息
+   * @param prompt 提示词
+   * @param systemPrompt 系统提示词
+   * @param tape Tape名称
+   * @param messages 消息列表
+   * @param context Tape上下文
+   * @returns 包含[payload, newMessages]元组的Promise
+   */
   private async _prepareMessagesAsync(
     prompt: string | null,
     systemPrompt: string | null,
@@ -450,6 +475,18 @@ export class ChatClient {
     return [payload, [userMessage]];
   }
 
+  /**
+   * 准备请求
+   * @param prompt 提示词
+   * @param systemPrompt 系统提示词
+   * @param messages 消息列表
+   * @param tape Tape名称
+   * @param context Tape上下文
+   * @param tools 工具输入
+   * @param requireTools 是否需要工具
+   * @param requireRunnable 是否需要可执行工具
+   * @returns PreparedChat对象
+   */
   private _prepareRequest(
     prompt: string | null,
     systemPrompt: string | null,
@@ -505,6 +542,18 @@ export class ChatClient {
     };
   }
 
+  /**
+   * 异步准备请求
+   * @param prompt 提示词
+   * @param systemPrompt 系统提示词
+   * @param messages 消息列表
+   * @param tape Tape名称
+   * @param context Tape上下文
+   * @param tools 工具输入
+   * @param requireTools 是否需要工具
+   * @param requireRunnable 是否需要可执行工具
+   * @returns 包含PreparedChat对象的Promise
+   */
   private async _prepareRequestAsync(
     prompt: string | null,
     systemPrompt: string | null,
@@ -560,6 +609,11 @@ export class ChatClient {
     };
   }
 
+  /**
+   * 规范化工具
+   * @param tools 工具输入
+   * @returns ToolSet
+   */
   private _normalizeTools(tools: ToolInput): ToolSet {
     try {
       return normalizeTools(tools);
@@ -843,6 +897,14 @@ export class ChatClient {
     );
   }
 
+  /**
+   * 构建异步流事件
+   * @param prepared PreparedChat对象
+   * @param response 响应
+   * @param providerName 提供商名称
+   * @param modelId 模型ID
+   * @returns 异步流事件
+   */
   private async _buildAsyncStreamEvents(
     prepared: PreparedChat,
     response: any,
@@ -934,6 +996,12 @@ export class ChatClient {
     return new AsyncStreamEvents(_iterator(), state);
   }
 
+  /**
+   * 提取文本
+   * @param payload 载荷
+   * @param transport 传输类型
+   * @returns 文本
+   */
   private _extractText(payload: any, transport: TransportKind | null): string {
     if (Array.isArray(payload)) {
       const parts: string[] = [];
@@ -955,6 +1023,12 @@ export class ChatClient {
     return parser.extractText(payload);
   }
 
+  /**
+   * 提取使用量
+   * @param payload 载荷
+   * @param transport 传输类型
+   * @returns 使用量信息
+   */
   private _extractUsage(
     payload: any,
     transport: TransportKind | null,
@@ -963,6 +1037,12 @@ export class ChatClient {
     return parser.extractUsage(payload);
   }
 
+  /**
+   * 提取工具调用增量
+   * @param chunk 数据块
+   * @param transport 传输类型
+   * @returns 工具调用增量数组
+   */
   private _extractChunkToolCallDeltas(
     chunk: any,
     transport: TransportKind | null,
@@ -971,6 +1051,12 @@ export class ChatClient {
     return parser.extractChunkToolCallDeltas(chunk);
   }
 
+  /**
+   * 处理流数据块
+   * @param chunk 数据块
+   * @param streamMode 流模式
+   * @returns 处理后的数据块
+   */
   private _processStreamChunk(
     chunk: any,
     streamMode: "messages" | "updates" | "values" | undefined,
@@ -1009,6 +1095,12 @@ export class ChatClient {
     return chunk;
   }
 
+  /**
+   * 提取数据块文本
+   * @param chunk 数据块
+   * @param transport 传输类型
+   * @returns 文本
+   */
   private _extractChunkText(
     chunk: any,
     transport: TransportKind | null,
@@ -1017,6 +1109,12 @@ export class ChatClient {
     return parser.extractChunkText(chunk);
   }
 
+  /**
+   * 更新Tape
+   * @param prepared PreparedChat对象
+   * @param responseText 回复文本
+   * @param options 选项
+   */
   private _updateTape(
     prepared: PreparedChat,
     responseText: string | null,
@@ -1050,6 +1148,13 @@ export class ChatClient {
     );
   }
 
+  /**
+   * 异步更新Tape
+   * @param prepared PreparedChat对象
+   * @param responseText 回复文本
+   * @param options 选项
+   * @returns Promise
+   */
   private async _updateTapeAsync(
     prepared: PreparedChat,
     responseText: string | null,
@@ -1083,6 +1188,15 @@ export class ChatClient {
     );
   }
 
+  /**
+   * 构建异步文本流
+   * @param prepared PreparedChat对象
+   * @param response 响应
+   * @param providerName 提供商名称
+   * @param modelId 模型ID
+   * @param attempt 尝试次数
+   * @returns 异步文本流
+   */
   private async _buildAsyncTextStream(
     prepared: PreparedChat,
     response: any,

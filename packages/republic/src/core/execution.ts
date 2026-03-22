@@ -246,7 +246,11 @@ export class LLMCore {
       overrideModel,
       overrideProvider,
     )) {
-      yield [providerName, modelId, await this.getClient(providerName)];
+      yield [
+        providerName,
+        modelId,
+        await this.getClient(providerName, modelId),
+      ];
     }
   }
 
@@ -298,6 +302,7 @@ export class LLMCore {
    */
   private _freezeCacheKey(
     provider: string,
+    model: string,
     apiKey: string | undefined,
     apiBase: string | undefined,
   ): string {
@@ -326,6 +331,7 @@ export class LLMCore {
 
     const payload = {
       provider,
+      model,
       api_key: apiKey,
       api_base: apiBase,
       client_args: _freeze(this._client_args),
@@ -334,19 +340,26 @@ export class LLMCore {
   }
 
   /**
-   * 根据对应供应商获取相关的client实例
-   * @param provider
+   * 根据对应供应商和模型获取相关的client实例
+   * @param provider 提供商名称
+   * @param model 模型名称
    * @returns Langchian的ChatOpenAI实例
    */
-  async getClient(provider: string): Promise<ChatOpenAI> {
+  async getClient(provider: string, model?: string): Promise<ChatOpenAI> {
+    const resolvedModel = model || this._model;
     const apiKey = await this._resolveApiKey(provider);
     const apiBase = this._resolveApiBase(provider);
-    const cacheKey = this._freezeCacheKey(provider, apiKey, apiBase);
+    const cacheKey = this._freezeCacheKey(
+      provider,
+      resolvedModel,
+      apiKey,
+      apiBase,
+    );
 
     if (!(cacheKey in this._client_cache)) {
       const client = createLangchainLLMClient({
         provider,
-        model: this._model,
+        model: resolvedModel,
         apiKey,
         apiBaseUrl: apiBase,
         configuration: this._client_args,
@@ -611,23 +624,19 @@ export class LLMCore {
     reasoningEffort: any | undefined,
     kwargs: Record<string, any>,
   ): Promise<TransportResponse> {
-    let lastProvider: string | undefined;
-    let lastModel: string | undefined;
+    const failedModels: string[] = [];
     let lastError: RepbulicError | undefined;
 
+    // 遍历所有客户端实例开始调用
     for await (const [providerName, modelId, client] of this.iterClients(
       model,
       provider,
     )) {
-      lastProvider = providerName;
-      lastModel = modelId;
-
+      // 尝试调用模型
       for (let attempt = 0; attempt < this.maxAttempts(); attempt++) {
         try {
           const response = await this._callClient(
             client,
-            providerName,
-            modelId,
             messagesPayload,
             toolsPayload,
             maxTokens,
@@ -652,16 +661,17 @@ export class LLMCore {
           break;
         }
       }
+      failedModels.push(`${providerName}:${modelId}`); // 收集所有错误模型数据
     }
 
     if (lastError) {
       throw lastError;
     }
 
-    if (lastProvider && lastModel) {
+    if (failedModels.length > 0) {
       throw new RepbulicError(
         ErrorKind.TEMPORARY,
-        `${lastProvider}:${lastModel}: LLM call failed after retries`,
+        `LLM call failed after retries for models: ${failedModels.join(", ")}`,
       );
     }
 
@@ -673,14 +683,10 @@ export class LLMCore {
 
   /**
    * 选择传输调用方式
-   * @param client ChatOpenAI客户端实例
    * @param stream 是否流式传输
    * @returns 传输类型
    */
-  private _selectedTransport(
-    client: ChatOpenAI,
-    stream: boolean,
-  ): TransportKind {
+  private _selectedTransport(stream: boolean): TransportKind {
     if (stream) {
       return "stream";
     }
@@ -690,20 +696,17 @@ export class LLMCore {
   /**
    * 调用客户端 - LangChain 统一风格
    * @param client ChatOpenAI客户端实例
-   * @param providerName 提供商名称
-   * @param modelId 模型ID
    * @param messagesPayload 消息负载
    * @param toolsPayload 工具负载
    * @param maxTokens 最大token数
    * @param stream 是否流式传输
+   * @param streamMode 流模式
    * @param reasoningEffort 推理努力程度
    * @param kwargs 其他参数
    * @returns 传输响应
    */
   private async _callClient(
     client: ChatOpenAI,
-    providerName: string,
-    modelId: string,
     messagesPayload: Record<string, any>[],
     toolsPayload: Record<string, any>[] | undefined,
     maxTokens: number | undefined,
@@ -712,7 +715,7 @@ export class LLMCore {
     reasoningEffort: any | undefined,
     kwargs: Record<string, any>,
   ): Promise<TransportResponse> {
-    const transport = this._selectedTransport(client, stream);
+    const transport = this._selectedTransport(stream);
     const langChainMessages = this._convertToLangChainMessages(messagesPayload);
 
     const invokeOptions: Record<string, any> = {
