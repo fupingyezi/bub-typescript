@@ -51,6 +51,7 @@ export class LLMCore {
   private _api_base: string | Record<string, string> | undefined;
   private _client_args: Record<string, any> | undefined;
   private _api_format: "invoke" | "stream";
+  private _stream_mode: StreamMode;
   private _verbose: number; // 详细程度级别，0-不详细，1-详细，2-详细且包含调试信息
   private _error_classifier: (error: Error) => ErrorKindType | undefined;
   private _client_cache: Record<string, any> = {};
@@ -65,6 +66,7 @@ export class LLMCore {
     api_base: string | Record<string, string> | undefined,
     client_args: Record<string, any> | undefined,
     api_format: "invoke" | "stream",
+    stream_mode: StreamMode,
     verbose: number,
     error_classifier: (error: Error) => ErrorKindType | undefined,
   ) {
@@ -77,6 +79,7 @@ export class LLMCore {
     this._api_base = api_base;
     this._client_args = client_args;
     this._api_format = api_format;
+    this._stream_mode = stream_mode;
     this._verbose = verbose;
     this._error_classifier = error_classifier;
   }
@@ -119,6 +122,22 @@ export class LLMCore {
    */
   maxAttempts(): number {
     return Math.max(this._max_retries + 1, 1);
+  }
+
+  /**
+   * 获取 API 格式
+   * @returns API 格式 ("invoke" | "stream")
+   */
+  get apiFormat(): "invoke" | "stream" {
+    return this._api_format;
+  }
+
+  /**
+   * 获取默认流模式
+   * @returns 流模式 ("messages" | "updates" | "values")
+   */
+  get streamMode(): StreamMode {
+    return this._stream_mode;
   }
 
   /**
@@ -607,8 +626,6 @@ export class LLMCore {
    * @param model 模型名称，可选
    * @param provider 提供商名称，可选
    * @param maxTokens 最大token数
-   * @param stream 是否流式传输
-   * @param streamMode 流模式 (messages, updates, values)
    * @param reasoningEffort 推理努力程度
    * @param kwargs 其他参数
    * @returns 传输响应
@@ -619,13 +636,13 @@ export class LLMCore {
     model: string | undefined,
     provider: string | undefined,
     maxTokens: number | undefined,
-    stream: boolean,
-    streamMode: StreamMode | undefined,
     reasoningEffort: any | undefined,
     kwargs: Record<string, any>,
   ): Promise<TransportResponse> {
     const failedModels: string[] = [];
     let lastError: RepbulicError | undefined;
+
+    const shouldStream = this._api_format === "stream";
 
     // 遍历所有客户端实例开始调用
     for await (const [providerName, modelId, client] of this.iterClients(
@@ -640,8 +657,8 @@ export class LLMCore {
             messagesPayload,
             toolsPayload,
             maxTokens,
-            stream,
-            streamMode,
+            shouldStream,
+            this._stream_mode,
             reasoningEffort,
             kwargs,
           );

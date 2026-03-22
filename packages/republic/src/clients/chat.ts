@@ -674,8 +674,6 @@ export class ChatClient {
       model || undefined,
       provider || undefined,
       maxTokens || undefined,
-      false,
-      undefined,
       undefined,
       kwargs,
     );
@@ -746,8 +744,6 @@ export class ChatClient {
       model || undefined,
       provider || undefined,
       maxTokens || undefined,
-      false,
-      undefined,
       undefined,
       kwargs,
     );
@@ -783,7 +779,6 @@ export class ChatClient {
       tape?: string | null;
       context?: TapeContext | null;
       tools?: ToolInput;
-      streamMode?: "messages" | "updates" | "values";
       [key: string]: any;
     } = {},
   ): Promise<AsyncTextStream> {
@@ -796,7 +791,6 @@ export class ChatClient {
       tape = null,
       context = null,
       tools = null,
-      streamMode = undefined,
       ...kwargs
     } = options;
 
@@ -818,8 +812,6 @@ export class ChatClient {
       model || undefined,
       provider || undefined,
       maxTokens || undefined,
-      true,
-      streamMode,
       undefined,
       kwargs,
     );
@@ -883,8 +875,6 @@ export class ChatClient {
       model || undefined,
       provider || undefined,
       maxTokens || undefined,
-      true,
-      undefined,
       undefined,
       kwargs,
     );

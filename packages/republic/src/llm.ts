@@ -38,6 +38,7 @@ export class LLM {
       apiBase?: string | Record<string, string>;
       clientArgs?: Record<string, any>;
       apiFormat?: "invoke" | "stream";
+      streamMode?: "messages" | "updates" | "values";
       verbose?: number;
       tapeStore?: TapeStore | AsyncTapeStore;
       context?: TapeContext;
@@ -53,6 +54,7 @@ export class LLM {
       apiBase,
       clientArgs = {},
       apiFormat = "invoke",
+      streamMode = "messages",
       verbose = 0,
       tapeStore,
       context,
@@ -103,6 +105,7 @@ export class LLM {
       apiBase,
       clientArgs,
       apiFormat,
+      streamMode,
       verbose,
       errorClassifier || (() => undefined),
     );
