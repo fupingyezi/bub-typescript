@@ -242,10 +242,19 @@ export class ChatClient {
     this._asyncTape = asyncTape;
   }
 
+  /**
+   * 获取默认上下文
+   * @returns Tape上下文
+   */
   get defaultContext(): TapeContext {
     return this._tape.defaultContext;
   }
 
+  /**
+   * 判断响应是否为传输响应
+   * @param response 响应对象
+   * @returns 是否为传输响应
+   */
   private static _isTransportResponse(
     response: any,
   ): response is { transport: TransportKind; payload: any } {
@@ -257,6 +266,11 @@ export class ChatClient {
     );
   }
 
+  /**
+   * 解包响应数据
+   * @param response 响应对象
+   * @returns [payload, transport]元组
+   */
   private static _unwrapResponse(response: any): [any, TransportKind | null] {
     if (ChatClient._isTransportResponse(response)) {
       return [response.payload, response.transport];
@@ -264,6 +278,12 @@ export class ChatClient {
     return [response, null];
   }
 
+  /**
+   * 解析响应格式
+   * @param payload 响应载荷
+   * @param transport 传输类型
+   * @returns 响应格式
+   */
   private static _resolveResponseFormat(
     payload: any,
     transport: TransportKind | null = null,
@@ -303,6 +323,12 @@ export class ChatClient {
     return "completion";
   }
 
+  /**
+   * 根据载荷获取解析器
+   * @param payload 响应载荷
+   * @param transport 传输类型
+   * @returns 解析器
+   */
   private static _parserForPayload(
     payload: any,
     transport: TransportKind | null = null,
@@ -542,6 +568,12 @@ export class ChatClient {
     }
   }
 
+  /**
+   * 异步获取工具调用
+   * @param prompt 提示词
+   * @param options 配置选项
+   * @returns 工具调用列表
+   */
   async toolCallsAsync(
     prompt: string | null = null,
     options: {
@@ -610,6 +642,12 @@ export class ChatClient {
     return toolCalls;
   }
 
+  /**
+   * 创建聊天回复
+   * @param prompt 提示词
+   * @param options 配置选项
+   * @returns 聊天回复文本
+   */
   async create(
     prompt: string | null = null,
     options: {
@@ -674,6 +712,12 @@ export class ChatClient {
     return text || "";
   }
 
+  /**
+   * 流式创建聊天回复
+   * @param prompt 提示词
+   * @param options 配置选项
+   * @returns 异步文本流
+   */
   async stream(
     prompt: string | null = null,
     options: {
@@ -735,6 +779,12 @@ export class ChatClient {
     );
   }
 
+  /**
+   * 异步获取流式事件
+   * @param prompt 提示词
+   * @param options 配置选项
+   * @returns 异步流事件
+   */
   async streamEventsAsync(
     prompt: string | null = null,
     options: {

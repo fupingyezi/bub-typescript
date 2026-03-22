@@ -1,13 +1,36 @@
 import { ChatOpenAI } from "@langchain/openai";
 
+/**
+ * LLM配置接口
+ */
 export interface LLMConfig {
+  /**
+   * 模型名称
+   */
   model: string;
-  provider?: string; // 设为可选
+  /**
+   * 提供商名称
+   */
+  provider?: string;
+  /**
+   * API密钥
+   */
   apiKey?: string;
+  /**
+   * API基础URL
+   */
   apiBaseUrl?: string;
+  /**
+   * 配置选项
+   */
   configuration?: Record<string, any>;
 }
 
+/**
+ * 创建LangChain LLM客户端
+ * @param config LLM配置
+ * @returns ChatOpenAI客户端
+ */
 export function createLangchainLLMClient(config: LLMConfig): ChatOpenAI {
   const { model, provider, apiKey, apiBaseUrl, configuration } = config;
 

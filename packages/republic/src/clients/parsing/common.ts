@@ -1,3 +1,10 @@
+/**
+ * 从数据对象中获取字段值
+ * @param data 数据对象
+ * @param key 字段名
+ * @param defaultValue 默认值
+ * @returns 字段值
+ */
 export function field(data: any, key: string, defaultValue: any = null): any {
   if (typeof data === "object" && data !== null && !Array.isArray(data)) {
     if (key in data) {
@@ -10,6 +17,11 @@ export function field(data: any, key: string, defaultValue: any = null): any {
   return defaultValue;
 }
 
+/**
+ * 扩展工具调用数组
+ * @param calls 工具调用数组
+ * @returns 扩展后的工具调用数组
+ */
 export function expandToolCalls(
   calls: Record<string, any>[],
 ): Record<string, any>[] {
@@ -20,6 +32,11 @@ export function expandToolCalls(
   return result;
 }
 
+/**
+ * 扩展单个工具调用
+ * @param call 工具调用
+ * @returns 扩展后的工具调用数组
+ */
 function _expandToolCall(call: Record<string, any>): Record<string, any>[] {
   const func = field(call, "function");
   if (typeof func !== "object" || func === null) {
@@ -52,6 +69,11 @@ function _expandToolCall(call: Record<string, any>): Record<string, any>[] {
   return expanded;
 }
 
+/**
+ * 分割连接的JSON对象字符串
+ * @param raw 原始字符串
+ * @returns 分割后的字符串数组
+ */
 function _splitConcatenatedJsonObjects(raw: string): string[] {
   const chunks: string[] = [];
   let position = 0;
@@ -91,6 +113,12 @@ function _splitConcatenatedJsonObjects(raw: string): string[] {
   return chunks;
 }
 
+/**
+ * 查找JSON对象的结束位置
+ * @param str 字符串
+ * @param start 起始位置
+ * @returns 结束位置
+ */
 function _findJsonEnd(str: string, start: number): number {
   let depth = 0;
   let inString = false;

@@ -1,11 +1,24 @@
 import { BaseTransportParser } from "./types";
 import { expandToolCalls, field } from "./common";
 
+/**
+ * Completion格式传输解析器
+ */
 export class CompletionTransportParser extends BaseTransportParser {
+  /**
+   * 判断是否为非流式响应
+   * @param response 响应对象
+   * @returns 是否为非流式响应
+   */
   isNonStreamResponse(response: any): boolean {
     return typeof response === "string" || field(response, "choices") !== null;
   }
 
+  /**
+   * 从数据块中提取工具调用增量
+   * @param chunk 数据块
+   * @returns 工具调用增量数组
+   */
   extractChunkToolCallDeltas(chunk: any): any[] {
     const choices = field(chunk, "choices");
     if (!choices || !Array.isArray(choices) || choices.length === 0) {
@@ -18,6 +31,11 @@ export class CompletionTransportParser extends BaseTransportParser {
     return field(delta, "tool_calls") || [];
   }
 
+  /**
+   * 从数据块中提取文本增量
+   * @param chunk 数据块
+   * @returns 文本增量
+   */
   extractChunkText(chunk: any): string {
     const choices = field(chunk, "choices");
     if (!choices || !Array.isArray(choices) || choices.length === 0) {
@@ -30,6 +48,11 @@ export class CompletionTransportParser extends BaseTransportParser {
     return field(delta, "content", "") || "";
   }
 
+  /**
+   * 从响应中提取文本
+   * @param response 响应对象
+   * @returns 文本
+   */
   extractText(response: any): string {
     if (typeof response === "string") {
       return response;
@@ -46,6 +69,11 @@ export class CompletionTransportParser extends BaseTransportParser {
     return field(message, "content", "") || "";
   }
 
+  /**
+   * 从响应中提取工具调用
+   * @param response 响应对象
+   * @returns 工具调用数组
+   */
   extractToolCalls(response: any): Record<string, any>[] {
     const choices = field(response, "choices");
     if (!choices || !Array.isArray(choices) || choices.length === 0) {
@@ -81,6 +109,11 @@ export class CompletionTransportParser extends BaseTransportParser {
     return expandToolCalls(calls);
   }
 
+  /**
+   * 从响应中提取使用量信息
+   * @param response 响应对象
+   * @returns 使用量信息或null
+   */
   extractUsage(response: any): Record<string, any> | null {
     const usage = field(response, "usage");
     if (usage === null) {

@@ -7,9 +7,16 @@ import { ErrorKind, ToolCall } from "@/types";
 import { ToolContext } from "./context";
 import { Tool, ToolInput, ToolSet, normalizeTools } from "./schema";
 
+/**
+ * 工具执行器类
+ */
 export class ToolExecutor {
   /**
-   * Execute tool calls with predictable validation and serialization.
+   * 执行工具调用
+   * @param response 响应对象
+   * @param tools 工具输入
+   * @param context 工具上下文
+   * @returns 工具执行结果
    */
   execute(
     response: Record<string, any>[] | Record<string, any> | string,
@@ -48,7 +55,11 @@ export class ToolExecutor {
   }
 
   /**
-   * Execute tool calls asynchronously.
+   * 异步执行工具调用
+   * @param response 响应对象
+   * @param tools 工具输入
+   * @param context 工具上下文
+   * @returns 包含工具执行结果的Promise
    */
   async executeAsync(
     response: Record<string, any>[] | Record<string, any> | string,
@@ -90,6 +101,12 @@ export class ToolExecutor {
     return new ToolExecution(toolCalls, results, error);
   }
 
+  /**
+   * 准备执行工具调用
+   * @param response 响应对象
+   * @param tools 工具输入
+   * @returns [toolCalls, toolMap]元组
+   */
   private _prepareExecution(
     response: Record<string, any>[] | Record<string, any> | string,
     tools: ToolInput,
@@ -99,6 +116,12 @@ export class ToolExecutor {
     return [toolCalls, toolMap];
   }
 
+  /**
+   * 解析工具调用
+   * @param toolResponse 工具响应
+   * @param toolMap 工具映射
+   * @returns [toolName, toolObj, toolArgs]元组
+   */
   private _resolveToolCall(
     toolResponse: any,
     toolMap: Map<string, Tool>,
@@ -129,6 +152,14 @@ export class ToolExecutor {
     return [toolName, toolObj, toolArgs];
   }
 
+  /**
+   * 调用工具
+   * @param toolName 工具名称
+   * @param toolObj 工具对象
+   * @param toolArgs 工具参数
+   * @param context 工具上下文
+   * @returns 工具执行结果
+   */
   private _invokeTool(
     toolName: string,
     toolObj: Tool,
@@ -147,6 +178,13 @@ export class ToolExecutor {
     return toolObj.run(toolArgs);
   }
 
+  /**
+   * 处理工具响应
+   * @param toolResponse 工具响应
+   * @param toolMap 工具映射
+   * @param context 工具上下文
+   * @returns 工具执行结果
+   */
   private _handleToolResponse(
     toolResponse: any,
     toolMap: Map<string, Tool>,
@@ -193,6 +231,13 @@ export class ToolExecutor {
     }
   }
 
+  /**
+   * 异步处理工具响应
+   * @param toolResponse 工具响应
+   * @param toolMap 工具映射
+   * @param context 工具上下文
+   * @returns 包含工具执行结果的Promise
+   */
   private async _handleToolResponseAsync(
     toolResponse: any,
     toolMap: Map<string, Tool>,
@@ -236,6 +281,11 @@ export class ToolExecutor {
     }
   }
 
+  /**
+   * 抛出异步执行错误
+   * @param toolName 工具名称
+   * @returns 从不返回
+   */
   private _raiseAsyncExecuteError(toolName: string): never {
     throw new ErrorPayload(
       ErrorKind.INVALID_INPUT,
@@ -243,6 +293,11 @@ export class ToolExecutor {
     );
   }
 
+  /**
+   * 规范化响应
+   * @param response 响应对象
+   * @returns 工具调用列表
+   */
   private _normalizeResponse(
     response: Record<string, any>[] | Record<string, any> | string,
   ): ToolCall[] {
@@ -278,6 +333,11 @@ export class ToolExecutor {
     return parsed as ToolCall[];
   }
 
+  /**
+   * 构建工具映射
+   * @param tools 工具输入
+   * @returns 工具名称到工具对象的映射
+   */
   private _buildToolMap(tools: ToolInput): Map<string, Tool> {
     if (tools === null) {
       throw new ErrorPayload(ErrorKind.INVALID_INPUT, "No tools provided.");
@@ -300,6 +360,12 @@ export class ToolExecutor {
     }
   }
 
+  /**
+   * 规范化工具参数
+   * @param toolName 工具名称
+   * @param toolArgs 工具参数
+   * @returns 规范化后的工具参数
+   */
   private _normalizeToolArgs(
     toolName: string,
     toolArgs: any,

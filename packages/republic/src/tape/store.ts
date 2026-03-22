@@ -6,6 +6,11 @@ import {
 } from "@/types";
 import { TapeEntry as TapeEntryImpl } from "./entries";
 
+/**
+ * 判断存储是否为异步Tape存储
+ * @param store 存储
+ * @returns 是否为异步存储
+ */
 export function isAsyncTapeStore(
   store: TapeStoreInterface | AsyncTapeStoreInterface,
 ): store is AsyncTapeStoreInterface {
@@ -17,6 +22,15 @@ export function isAsyncTapeStore(
     : false;
 }
 
+/**
+ * 查找锚点索引
+ * @param entries 条目列表
+ * @param name 锚点名称
+ * @param defaultIndex 默认索引
+ * @param forward 是否向前查找
+ * @param startIndex 起始索引
+ * @returns 锚点索引
+ */
 export function findAnchorIndex(
   entries: TapeEntry[],
   name: string | null,
@@ -42,10 +56,23 @@ export function findAnchorIndex(
   return defaultIndex;
 }
 
+/**
+ * 解析日期时间边界
+ * @param value 日期字符串
+ * @param isEnd 是否为结束日期
+ * @returns 日期对象
+ */
 export function parseDateTimeBoundary(value: string, isEnd: boolean): Date {
   return new Date(value);
 }
 
+/**
+ * 判断条目是否在日期范围内
+ * @param entry Tape条目
+ * @param startDate 起始日期
+ * @param endDate 结束日期
+ * @returns 是否在范围内
+ */
 export function isEntryInDateRange(
   entry: TapeEntry,
   startDate: Date,
@@ -58,6 +85,12 @@ export function isEntryInDateRange(
   );
 }
 
+/**
+ * 判断条目是否匹配查询
+ * @param entry Tape条目
+ * @param query 查询字符串
+ * @returns 是否匹配
+ */
 export function isEntryMatchingQuery(entry: TapeEntry, query: string): boolean {
   const needle = query.toLowerCase();
   const haystack = JSON.stringify(
@@ -72,11 +105,24 @@ export function isEntryMatchingQuery(entry: TapeEntry, query: string): boolean {
   return haystack.includes(needle);
 }
 
+/**
+ * 内存查询混入类
+ */
 class InMemoryQueryMixin {
+  /**
+   * 读取Tape条目
+   * @param tape Tape名称
+   * @returns Tape条目数组或null
+   */
   read(tape: string): TapeEntry[] | null {
     throw new Error("Method not implemented.");
   }
 
+  /**
+   * 获取所有匹配的条目
+   * @param query 查询对象
+   * @returns 匹配的条目数组
+   */
   fetchAll(query: TapeQuery<TapeStoreInterface>): TapeEntry[] {
     const entries = this.read(query.tape) || [];
     let startIndex = 0;
@@ -154,6 +200,9 @@ class InMemoryQueryMixin {
   }
 }
 
+/**
+ * 内存Tape存储类
+ */
 export class InMemoryTapeStore
   extends InMemoryQueryMixin
   implements TapeStoreInterface
@@ -165,15 +214,28 @@ export class InMemoryTapeStore
     super();
   }
 
+  /**
+   * 获取Tape列表
+   * @returns Tape名称列表
+   */
   listTapes(): string[] {
     return [...this._tapes.keys()].sort();
   }
 
+  /**
+   * 重置Tape
+   * @param tape Tape名称
+   */
   reset(tape: string): void {
     this._tapes.set(tape, []);
     this._nextId[tape] = 0;
   }
 
+  /**
+   * 读取Tape条目
+   * @param tape Tape名称
+   * @returns Tape条目数组或null
+   */
   read(tape: string): TapeEntry[] | null {
     const entries = this._tapes.get(tape);
     if (!entries) {
@@ -182,6 +244,11 @@ export class InMemoryTapeStore
     return entries.map((entry) => entry.copy());
   }
 
+  /**
+   * 添加条目到Tape
+   * @param tape Tape名称
+   * @param entry Tape条目
+   */
   append(tape: string, entry: TapeEntry): void {
     const nextId = this._nextId[tape] || 0;
     this._nextId[tape] = nextId + 1;
@@ -196,6 +263,9 @@ export class InMemoryTapeStore
   }
 }
 
+/**
+ * 异步Tape存储适配器类
+ */
 export class AsyncTapeStoreAdapter implements AsyncTapeStoreInterface {
   private _store: TapeStoreInterface;
   public readonly _isAsync: boolean = true;
@@ -204,6 +274,10 @@ export class AsyncTapeStoreAdapter implements AsyncTapeStoreInterface {
     this._store = store;
   }
 
+  /**
+   * 获取Tape列表
+   * @returns 包含Tape名称列表的Promise
+   */
   async listTapes(): Promise<string[]> {
     return new Promise((resolve) => {
       setTimeout(() => {
@@ -212,6 +286,11 @@ export class AsyncTapeStoreAdapter implements AsyncTapeStoreInterface {
     });
   }
 
+  /**
+   * 重置Tape
+   * @param tape Tape名称
+   * @returns Promise
+   */
   async reset(tape: string): Promise<void> {
     return new Promise((resolve) => {
       setTimeout(() => {
@@ -221,7 +300,14 @@ export class AsyncTapeStoreAdapter implements AsyncTapeStoreInterface {
     });
   }
 
-  async fetchAll(query: TapeQuery<AsyncTapeStoreInterface>): Promise<TapeEntry[]> {
+  /**
+   * 获取所有Tape条目
+   * @param query Tape查询
+   * @returns 包含Tape条目数组的Promise
+   */
+  async fetchAll(
+    query: TapeQuery<AsyncTapeStoreInterface>,
+  ): Promise<TapeEntry[]> {
     return new Promise((resolve) => {
       setTimeout(() => {
         if (this._store instanceof InMemoryQueryMixin) {
@@ -234,6 +320,12 @@ export class AsyncTapeStoreAdapter implements AsyncTapeStoreInterface {
     });
   }
 
+  /**
+   * 添加条目到Tape
+   * @param tape Tape名称
+   * @param entry Tape条目
+   * @returns Promise
+   */
   async append(tape: string, entry: TapeEntry): Promise<void> {
     return new Promise((resolve) => {
       setTimeout(() => {

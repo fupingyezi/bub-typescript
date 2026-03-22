@@ -16,6 +16,12 @@ export class TextClient {
     this._chat = chat;
   }
 
+  /**
+   * 构建条件判断提示词
+   * @param inputText 输入文本
+   * @param question 判断问题
+   * @returns 提示词
+   */
   private static _buildIfPrompt(inputText: string, question: string): string {
     return `
 Here is an input:
@@ -32,6 +38,12 @@ Answer by calling the tool with a boolean \`value\`.
     `.trim();
   }
 
+  /**
+   * 构建分类提示词
+   * @param inputText 输入文本
+   * @param choicesStr 选项字符串
+   * @returns 提示词
+   */
   private static _buildClassifyPrompt(
     inputText: string,
     choicesStr: string,
@@ -51,6 +63,11 @@ Answer by calling the tool with \`label\` set to one of the choices.
     `.trim();
   }
 
+  /**
+   * 规范化分类选项
+   * @param choices 选项列表
+   * @returns 规范化后的选项列表
+   */
   private static _normalizeChoices(choices: string[]): string[] {
     if (!choices || choices.length === 0) {
       throw new ErrorPayload(
@@ -61,6 +78,13 @@ Answer by calling the tool with \`label\` set to one of the choices.
     return choices.map((choice) => choice.trim());
   }
 
+  /**
+   * 判断输入文本是否满足条件
+   * @param inputText 输入文本
+   * @param question 判断问题
+   * @param options 配置选项
+   * @returns 判断结果
+   */
   async if_(
     inputText: string,
     question: string,
@@ -93,6 +117,13 @@ Answer by calling the tool with \`label\` set to one of the choices.
     return this._parseToolCall(calls, "value");
   }
 
+  /**
+   * 对输入文本进行分类
+   * @param inputText 输入文本
+   * @param choices 分类选项列表
+   * @param options 配置选项
+   * @returns 分类标签
+   */
   async classify(
     inputText: string,
     choices: string[],
@@ -135,6 +166,12 @@ Answer by calling the tool with \`label\` set to one of the choices.
     return label;
   }
 
+  /**
+   * 解析工具调用结果
+   * @param calls 工具调用列表
+   * @param field 字段名
+   * @returns 字段值
+   */
   private _parseToolCall(calls: any, field: string): any {
     if (!Array.isArray(calls) || calls.length === 0) {
       throw new ErrorPayload(ErrorKind.INVALID_INPUT, "tool call is missing.");

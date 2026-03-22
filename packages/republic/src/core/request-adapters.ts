@@ -1,18 +1,42 @@
+/**
+ * 工具选择函数接口
+ */
 export interface ToolChoiceFunction {
+  /**
+   * 函数名称
+   */
   name: string;
 }
 
+/**
+ * 工具选择对象接口
+ */
 export interface ToolChoiceObject {
+  /**
+   * 类型
+   */
   type?: string;
+  /**
+   * 函数
+   */
   function?: ToolChoiceFunction | Record<string, unknown>;
   [key: string]: unknown;
 }
 
+/**
+ * 规范化工具选择接口
+ */
 export interface NormalizedToolChoice extends Omit<
   ToolChoiceObject,
   "function"
 > {
+  /**
+   * 类型
+   */
   type: string;
+  /**
+   * 函数名称
+   */
   name: string;
 }
 
@@ -23,6 +47,8 @@ export interface NormalizedToolChoice extends Omit<
  *   { tool_choice: { function: { name: "my_func" } } }
  * Into:
  *   { tool_choice: { type: "function", name: "my_func" } }
+ * @param kwargs kwargs参数
+ * @returns 规范化后的参数
  */
 export function normalizeResponses_kwargs(
   kwargs: Record<string, any>,

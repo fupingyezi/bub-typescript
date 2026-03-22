@@ -1,7 +1,15 @@
 import { BaseTransportParser } from "./types";
 import { expandToolCalls, field } from "./common";
 
+/**
+ * Responses格式传输解析器
+ */
 export class ResponseTransportParser extends BaseTransportParser {
+  /**
+   * 判断是否为非流式响应
+   * @param response 响应对象
+   * @returns 是否为非流式响应
+   */
   isNonStreamResponse(response: any): boolean {
     return (
       typeof response === "string" ||
@@ -11,6 +19,12 @@ export class ResponseTransportParser extends BaseTransportParser {
     );
   }
 
+  /**
+   * 从参数事件中提取工具增量
+   * @param chunk 数据块
+   * @param eventType 事件类型
+   * @returns 工具调用增量数组
+   */
   private _toolDeltaFromArgsEvent(chunk: any, eventType: string): any[] {
     const itemId = field(chunk, "item_id");
     if (!itemId) {
@@ -40,6 +54,12 @@ export class ResponseTransportParser extends BaseTransportParser {
     return [payload];
   }
 
+  /**
+   * 从输出项事件中提取工具增量
+   * @param chunk 数据块
+   * @param eventType 事件类型
+   * @returns 工具调用增量数组
+   */
   private _toolDeltaFromOutputItemEvent(chunk: any, eventType: string): any[] {
     const item = field(chunk, "item");
     if (field(item, "type") !== "function_call") {
@@ -69,6 +89,11 @@ export class ResponseTransportParser extends BaseTransportParser {
     ];
   }
 
+  /**
+   * 从数据块中提取工具调用增量
+   * @param chunk 数据块
+   * @returns 工具调用增量数组
+   */
   extractChunkToolCallDeltas(chunk: any): any[] {
     const eventType = field(chunk, "type");
     if (
@@ -86,6 +111,11 @@ export class ResponseTransportParser extends BaseTransportParser {
     return [];
   }
 
+  /**
+   * 从数据块中提取文本增量
+   * @param chunk 数据块
+   * @returns 文本增量
+   */
   extractChunkText(chunk: any): string {
     if (field(chunk, "type") !== "response.output_text.delta") {
       return "";
@@ -97,6 +127,11 @@ export class ResponseTransportParser extends BaseTransportParser {
     return "";
   }
 
+  /**
+   * 从输出中提取文本
+   * @param output 输出对象
+   * @returns 文本
+   */
   private _extractTextFromOutput(output: any): string {
     if (!Array.isArray(output)) {
       return "";
@@ -119,6 +154,11 @@ export class ResponseTransportParser extends BaseTransportParser {
     return parts.join("");
   }
 
+  /**
+   * 从响应中提取文本
+   * @param response 响应对象
+   * @returns 文本
+   */
   extractText(response: any): string {
     const outputText = field(response, "output_text");
     if (typeof outputText === "string") {
@@ -127,6 +167,11 @@ export class ResponseTransportParser extends BaseTransportParser {
     return this._extractTextFromOutput(field(response, "output"));
   }
 
+  /**
+   * 从响应中提取工具调用
+   * @param response 响应对象
+   * @returns 工具调用数组
+   */
   extractToolCalls(response: any): Record<string, any>[] {
     const output = Array.isArray(response)
       ? response
@@ -160,6 +205,11 @@ export class ResponseTransportParser extends BaseTransportParser {
     return expandToolCalls(calls);
   }
 
+  /**
+   * 从响应中提取使用量信息
+   * @param response 响应对象
+   * @returns 使用量信息或null
+   */
   extractUsage(response: any): Record<string, any> | null {
     const eventType = field(response, "type");
     let usage: any;

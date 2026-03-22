@@ -9,6 +9,12 @@ export class InternalOps {
     this._core = core;
   }
 
+  /**
+   * 解析提供商和模型
+   * @param model 模型名称
+   * @param provider 提供商名称
+   * @returns [provider, model]元组
+   */
   private _resolveProviderModel(
     model: string | null,
     provider: string | null,
@@ -24,10 +30,21 @@ export class InternalOps {
     return [resolved.provider, resolved.model];
   }
 
+  /**
+   * 解析提供商
+   * @param provider 提供商名称
+   * @returns 提供商名称
+   */
   private _resolveProvider(provider: string | null): string {
     return provider || this._core.provider;
   }
 
+  /**
+   * 构建错误对象
+   * @param exc 原始错误
+   * @param options 配置选项
+   * @returns 错误载荷
+   */
   private _error(
     exc: Error,
     options: {
@@ -46,6 +63,12 @@ export class InternalOps {
     return new ErrorPayload(kind, message, { operation: options.operation });
   }
 
+  /**
+   * 调用responses接口
+   * @param inputData 输入数据
+   * @param options 配置选项
+   * @returns 响应结果
+   */
   async responses(
     inputData: any,
     options: {
@@ -73,6 +96,11 @@ export class InternalOps {
     }
   }
 
+  /**
+   * 列出可用模型
+   * @param options 配置选项
+   * @returns 模型列表
+   */
   async listModels(
     options: {
       provider?: string | null;
@@ -94,6 +122,13 @@ export class InternalOps {
     }
   }
 
+  /**
+   * 创建批量任务
+   * @param inputFilePath 输入文件路径
+   * @param endpoint 端点
+   * @param options 配置选项
+   * @returns 批量任务结果
+   */
   async createBatch(
     inputFilePath: string,
     endpoint: string,
@@ -130,6 +165,12 @@ export class InternalOps {
     }
   }
 
+  /**
+   * 获取批量任务
+   * @param batchId 批量任务ID
+   * @param options 配置选项
+   * @returns 批量任务结果
+   */
   async retrieveBatch(
     batchId: string,
     options: {
@@ -155,6 +196,12 @@ export class InternalOps {
     }
   }
 
+  /**
+   * 取消批量任务
+   * @param batchId 批量任务ID
+   * @param options 配置选项
+   * @returns 取消结果
+   */
   async cancelBatch(
     batchId: string,
     options: {
@@ -180,6 +227,11 @@ export class InternalOps {
     }
   }
 
+  /**
+   * 列出批量任务
+   * @param options 配置选项
+   * @returns 批量任务列表
+   */
   async listBatches(
     options: {
       provider?: string | null;

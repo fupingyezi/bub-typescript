@@ -161,27 +161,54 @@ export class LLM {
     this.tools = toolExecutor;
   }
 
+  /**
+   * 获取模型名称
+   * @returns 模型名称
+   */
   get model(): string {
     return this._core.model;
   }
 
+  /**
+   * 获取提供商名称
+   * @returns 提供商名称
+   */
   get provider(): string {
     return this._core.provider;
   }
 
+  /**
+   * 获取备用模型列表
+   * @returns 备用模型列表
+   */
   get fallbackModels(): string[] {
     return this._core.fallback_models;
   }
 
+  /**
+   * 获取默认上下文
+   * @returns Tape上下文
+   */
   get context(): TapeContext {
     return this._asyncTape.defaultContext;
   }
 
+  /**
+   * 设置默认上下文
+   * @param value Tape上下文
+   */
   set context(value: TapeContext) {
     this._tape.defaultContext = value;
     this._asyncTape.defaultContext = value;
   }
 
+  /**
+   * 创建一个新的Tape实例
+   * @param name Tape名称
+   * @param options 配置选项
+   * @param options.context Tape上下文
+   * @returns Tape实例
+   */
   tape(
     name: string,
     options?: {
@@ -191,6 +218,12 @@ export class LLM {
     return new Tape(name, this._chatClient, options?.context);
   }
 
+  /**
+   * 发起聊天请求
+   * @param prompt 提示词
+   * @param options 配置选项
+   * @returns 聊天回复文本
+   */
   chat(
     prompt: string | null = null,
     options?: {
@@ -209,6 +242,12 @@ export class LLM {
     });
   }
 
+  /**
+   * 异步发起聊天请求
+   * @param prompt 提示词
+   * @param options 配置选项
+   * @returns 聊天回复文本
+   */
   async chatAsync(
     prompt: string | null = null,
     options?: {
@@ -227,6 +266,12 @@ export class LLM {
     });
   }
 
+  /**
+   * 获取工具调用
+   * @param prompt 提示词
+   * @param options 配置选项
+   * @returns 工具调用列表
+   */
   toolCalls(
     prompt: string | null = null,
     options?: {
@@ -246,6 +291,12 @@ export class LLM {
     });
   }
 
+  /**
+   * 异步获取工具调用
+   * @param prompt 提示词
+   * @param options 配置选项
+   * @returns 工具调用列表
+   */
   async toolCallsAsync(
     prompt: string | null = null,
     options?: {
@@ -265,6 +316,12 @@ export class LLM {
     });
   }
 
+  /**
+   * 执行工具调用
+   * @param prompt 提示词
+   * @param options 配置选项
+   * @returns 工具执行结果
+   */
   async runTools(
     prompt: string | null = null,
     options?: {
@@ -282,6 +339,12 @@ export class LLM {
     return await this.runToolsAsync(prompt, options);
   }
 
+  /**
+   * 异步执行工具调用
+   * @param prompt 提示词
+   * @param options 配置选项
+   * @returns 工具执行结果
+   */
   async runToolsAsync(
     prompt: string | null = null,
     options?: {
@@ -323,6 +386,13 @@ export class LLM {
     return ToolAutoResult.toolsResult(toolCalls, toolResults.toolResults);
   }
 
+  /**
+   * 判断输入文本是否满足条件
+   * @param inputText 输入文本
+   * @param question 判断问题
+   * @param options 配置选项
+   * @returns 判断结果
+   */
   if_(
     inputText: string,
     question: string,
@@ -334,6 +404,13 @@ export class LLM {
     return this._textClient.if_(inputText, question, options);
   }
 
+  /**
+   * 异步判断输入文本是否满足条件
+   * @param inputText 输入文本
+   * @param question 判断问题
+   * @param options 配置选项
+   * @returns 判断结果
+   */
   async ifAsync(
     inputText: string,
     question: string,
@@ -345,6 +422,13 @@ export class LLM {
     return await this._textClient.if_(inputText, question, options);
   }
 
+  /**
+   * 对输入文本进行分类
+   * @param inputText 输入文本
+   * @param choices 分类选项列表
+   * @param options 配置选项
+   * @returns 分类标签
+   */
   classify(
     inputText: string,
     choices: string[],
@@ -356,6 +440,13 @@ export class LLM {
     return this._textClient.classify(inputText, choices, options);
   }
 
+  /**
+   * 异步对输入文本进行分类
+   * @param inputText 输入文本
+   * @param choices 分类选项列表
+   * @param options 配置选项
+   * @returns 分类标签
+   */
   async classifyAsync(
     inputText: string,
     choices: string[],
@@ -367,6 +458,12 @@ export class LLM {
     return await this._textClient.classify(inputText, choices, options);
   }
 
+  /**
+   * 获取文本嵌入
+   * @param inputs 输入文本或文本数组
+   * @param options 配置选项
+   * @returns 嵌入结果
+   */
   embed(
     inputs: string | string[],
     options?: {
@@ -378,6 +475,12 @@ export class LLM {
     return this.embeddings.embed(inputs, options);
   }
 
+  /**
+   * 异步获取文本嵌入
+   * @param inputs 输入文本或文本数组
+   * @param options 配置选项
+   * @returns 嵌入结果
+   */
   async embedAsync(
     inputs: string | string[],
     options?: {
@@ -389,6 +492,12 @@ export class LLM {
     return await this.embeddings.embed(inputs, options);
   }
 
+  /**
+   * 流式发起聊天请求
+   * @param prompt 提示词
+   * @param options 配置选项
+   * @returns 异步文本流
+   */
   stream(
     prompt: string | null = null,
     options?: {
@@ -407,6 +516,12 @@ export class LLM {
     });
   }
 
+  /**
+   * 异步流式发起聊天请求
+   * @param prompt 提示词
+   * @param options 配置选项
+   * @returns 异步文本流
+   */
   async streamAsync(
     prompt: string | null = null,
     options?: {
@@ -425,6 +540,12 @@ export class LLM {
     });
   }
 
+  /**
+   * 获取流式事件
+   * @param prompt 提示词
+   * @param options 配置选项
+   * @returns 异步流事件
+   */
   streamEvents(
     prompt: string | null = null,
     options?: {
@@ -444,6 +565,12 @@ export class LLM {
     });
   }
 
+  /**
+   * 异步获取流式事件
+   * @param prompt 提示词
+   * @param options 配置选项
+   * @returns 异步流事件
+   */
   async streamEventsAsync(
     prompt: string | null = null,
     options?: {

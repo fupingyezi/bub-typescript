@@ -1,5 +1,5 @@
 /**
- * Tool helpers for Republic.
+ * 工具架构模块
  */
 
 import { ErrorPayload } from "@/core/results";
@@ -38,6 +38,10 @@ export class Tool {
     this.context = context;
   }
 
+  /**
+   * 获取工具架构
+   * @returns 工具架构
+   */
   schema(): ToolSchema {
     return {
       type: "function",
@@ -49,6 +53,11 @@ export class Tool {
     };
   }
 
+  /**
+   * 获取工具的架构表示
+   * @param jsonMode 是否返回JSON格式
+   * @returns 工具架构
+   */
   asTool(jsonMode: boolean = false): string | ToolSchema {
     const schema = this.schema();
     if (jsonMode) {
@@ -57,6 +66,11 @@ export class Tool {
     return schema;
   }
 
+  /**
+   * 执行工具
+   * @param args 参数
+   * @returns 执行结果
+   */
   run(...args: any[]): any {
     if (this.handler === null) {
       throw new Error(
@@ -66,6 +80,12 @@ export class Tool {
     return this.handler(...args);
   }
 
+  /**
+   * 从可调用对象创建工具
+   * @param func 函数
+   * @param options 配置选项
+   * @returns 工具
+   */
   static fromCallable(
     func: ToolHandler,
     options: {
@@ -93,6 +113,13 @@ export class Tool {
     return new Tool(toolName, toolDescription, parameters, func, context);
   }
 
+  /**
+   * 从模型创建工具
+   * @param model 模型类
+   * @param handler 处理器
+   * @param context 是否需要上下文
+   * @returns 工具
+   */
   static fromModel(
     model: new (...args: any[]) => any,
     handler?: ToolHandler,
@@ -103,6 +130,11 @@ export class Tool {
     return toolFromModel(model, handlerFn, { context });
   }
 
+  /**
+   * 转换工具输入
+   * @param tools 工具输入
+   * @returns 工具数组
+   */
   static convertTools(tools: ToolInput): Tool[] {
     if (!tools) {
       return [];
@@ -125,37 +157,69 @@ export class Tool {
   }
 }
 
+/**
+ * 工具集类
+ */
 export class ToolSet {
   readonly schemas: ToolSchema[];
   readonly runnable: Tool[];
 
+  /**
+   * 构造函数
+   * @param schemas 架构列表
+   * @param runnable 可执行工具列表
+   */
   constructor(schemas: ToolSchema[] = [], runnable: Tool[] = []) {
     this.schemas = schemas;
     this.runnable = runnable;
   }
 
+  /**
+   * 获取载荷
+   * @returns 架构数组
+   */
   get payload(): any[] {
     return this.schemas.length > 0 ? this.schemas : [];
   }
 
+  /**
+   * 要求可执行工具
+   * @throws 如果工具集只有架构但没有可执行工具
+   */
   requireRunnable(): void {
     if (this.schemas.length > 0 && this.runnable.length === 0) {
       throw new Error("Schema-only tools cannot be executed.");
     }
   }
 
+  /**
+   * 从工具输入创建工具集
+   * @param tools 工具输入
+   * @returns 工具集
+   */
   static fromTools(tools: ToolInput): ToolSet {
     return normalizeTools(tools);
   }
 }
 
+/**
+ * 工具输入类型
+ */
 export type ToolInput = ToolSet | any[] | null;
 
+/**
+ * 工具条目接口
+ */
 interface ToolEntry {
   schema: ToolSchema;
   runnable: Tool | null;
 }
 
+/**
+ * 转换为蛇形命名法
+ * @param name 名称
+ * @returns 蛇形命名的名称
+ */
 function toSnakeCase(name: string): string {
   return name
     .replace(/([A-Z])/g, "_$1")
@@ -163,6 +227,11 @@ function toSnakeCase(name: string): string {
     .replace(/^_/, "");
 }
 
+/**
+ * 获取可调用对象的名称
+ * @param func 函数
+ * @returns 名称
+ */
 function getCallableName(func: ToolHandler): string {
   const name = func.name;
   if (name && name.length > 0) {
@@ -171,10 +240,21 @@ function getCallableName(func: ToolHandler): string {
   return func.constructor.name;
 }
 
+/**
+ * 获取函数文档
+ * @param func 函数
+ * @returns 文档字符串
+ */
 function getFunctionDoc(func: ToolHandler): string {
   return "";
 }
 
+/**
+ * 从函数生成架构
+ * @param func 函数
+ * @param ignoreParams 忽略的参数
+ * @returns 架构对象
+ */
 function schemaFromFunction(
   func: ToolHandler,
   ignoreParams: string[] = [],
@@ -211,6 +291,12 @@ function schemaFromFunction(
   return schema;
 }
 
+/**
+ * 验证工具架构
+ * @param toolSchema 工具架构
+ * @returns 工具名称
+ * @throws 如果架构无效
+ */
 function validateToolSchema(toolSchema: ToolSchema): string {
   if (toolSchema.type !== "function") {
     throw new Error("Tool schema must have type='function'.");
@@ -232,6 +318,12 @@ function validateToolSchema(toolSchema: ToolSchema): string {
   return name;
 }
 
+/**
+ * 确保工具名称唯一
+ * @param name 工具名称
+ * @param seenNames 已见的名称集合
+ * @throws 如果名称为空或已存在
+ */
 function ensureUnique(name: string, seenNames: Set<string>): void {
   if (!name) {
     throw new Error("Tool name cannot be empty.");
@@ -242,6 +334,13 @@ function ensureUnique(name: string, seenNames: Set<string>): void {
   seenNames.add(name);
 }
 
+/**
+ * 规范化工具项
+ * @param toolItem 工具项
+ * @param seenNames 已见的名称集合
+ * @returns 工具条目
+ * @throws 如果工具类型不支持
+ */
 function normalizeToolItem(toolItem: any, seenNames: Set<string>): ToolEntry {
   if (
     typeof toolItem === "object" &&
@@ -269,6 +368,11 @@ function normalizeToolItem(toolItem: any, seenNames: Set<string>): ToolEntry {
   };
 }
 
+/**
+ * 规范化工具输入
+ * @param tools 工具输入
+ * @returns 工具集
+ */
 export function normalizeTools(tools: ToolInput): ToolSet {
   if (tools === null) {
     return new ToolSet([], []);
@@ -298,6 +402,12 @@ export function normalizeTools(tools: ToolInput): ToolSet {
   return new ToolSet(schemas, runnableTools);
 }
 
+/**
+ * 从模型生成架构
+ * @param model 模型类
+ * @param options 配置选项
+ * @returns 工具架构
+ */
 export function schemaFromModel(
   model: new (...args: any[]) => any,
   options: {
@@ -329,6 +439,11 @@ export function schemaFromModel(
   };
 }
 
+/**
+ * 从实例提取架构
+ * @param instance 实例
+ * @returns 架构对象
+ */
 function extractSchemaFromInstance(instance: any): Record<string, any> {
   const properties: Record<string, any> = {};
   const required: string[] = [];
@@ -360,6 +475,13 @@ function extractSchemaFromInstance(instance: any): Record<string, any> {
   return schema;
 }
 
+/**
+ * 从模型创建工具
+ * @param model 模型类
+ * @param handler 处理器
+ * @param options 配置选项
+ * @returns 工具
+ */
 export function toolFromModel(
   model: new (...args: any[]) => any,
   handler: ToolHandler,
@@ -399,6 +521,12 @@ export function toolFromModel(
   return new Tool(toolName, toolDescription, parameters, _handler, context);
 }
 
+/**
+ * 创建工具（函数形式）
+ * @param func 函数
+ * @param options 配置选项
+ * @returns 工具
+ */
 export function tool(
   func: ToolHandler,
   options?: {
@@ -408,12 +536,23 @@ export function tool(
     context?: boolean;
   },
 ): Tool;
+/**
+ * 创建工具（选项形式）
+ * @param options 配置选项
+ * @returns 返回函数的函数
+ */
 export function tool(options: {
   name?: string;
   model?: new (...args: any[]) => any;
   description?: string;
   context?: boolean;
 }): (func: ToolHandler) => Tool;
+/**
+ * 创建工具
+ * @param funcOrOptions 函数或配置选项
+ * @param options 配置选项
+ * @returns 工具或返回函数的函数
+ */
 export function tool(
   funcOrOptions:
     | ToolHandler

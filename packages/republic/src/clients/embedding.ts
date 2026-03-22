@@ -8,6 +8,12 @@ export class EmbeddingClient {
     this._core = core;
   }
 
+  /**
+   * 解析提供商和模型
+   * @param model 模型名称
+   * @param provider 提供商名称
+   * @returns [provider, model]元组
+   */
   private _resolveProviderModel(
     model: string | null,
     provider: string | null,
@@ -23,6 +29,12 @@ export class EmbeddingClient {
     return [resolved.provider, resolved.model];
   }
 
+  /**
+   * 获取文本嵌入
+   * @param inputs 输入文本或文本数组
+   * @param options 配置选项
+   * @returns 嵌入结果
+   */
   async embed(
     inputs: string | string[],
     options: {

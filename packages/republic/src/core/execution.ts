@@ -81,22 +81,42 @@ export class LLMCore {
     this._error_classifier = error_classifier;
   }
 
+  /**
+   * 获取提供商名称
+   * @returns 提供商名称
+   */
   get provider(): string {
     return this._provider;
   }
 
+  /**
+   * 获取模型名称
+   * @returns 模型名称
+   */
   get model(): string {
     return this._model;
   }
 
+  /**
+   * 获取备用模型列表
+   * @returns 备用模型列表
+   */
   get fallback_models(): string[] {
     return this._fallback_models;
   }
 
+  /**
+   * 获取最大重试次数
+   * @returns 最大重试次数
+   */
   get max_retries(): number {
     return this._max_retries;
   }
 
+  /**
+   * 获取最大尝试次数
+   * @returns 最大尝试次数
+   */
   maxAttempts(): number {
     return Math.max(this._max_retries + 1, 1);
   }
