@@ -21,14 +21,21 @@ export class CompletionTransportParser extends BaseTransportParser {
    */
   extractChunkToolCallDeltas(chunk: any): any[] {
     const choices = field(chunk, "choices");
-    if (!choices || !Array.isArray(choices) || choices.length === 0) {
-      return [];
+    if (choices && Array.isArray(choices) && choices.length > 0) {
+      const delta = field(choices[0], "delta");
+      if (delta !== null) {
+        return field(delta, "tool_calls") || [];
+      }
     }
-    const delta = field(choices[0], "delta");
-    if (delta === null) {
-      return [];
+    const lcToolCalls = field(chunk, "tool_calls");
+    if (lcToolCalls) {
+      return lcToolCalls;
     }
-    return field(delta, "tool_calls") || [];
+    const lcAdditionalArgs = field(chunk, "additional_kwargs");
+    if (lcAdditionalArgs && field(lcAdditionalArgs, "tool_calls")) {
+      return field(lcAdditionalArgs, "tool_calls") || [];
+    }
+    return [];
   }
 
   /**
@@ -38,14 +45,32 @@ export class CompletionTransportParser extends BaseTransportParser {
    */
   extractChunkText(chunk: any): string {
     const choices = field(chunk, "choices");
-    if (!choices || !Array.isArray(choices) || choices.length === 0) {
-      return "";
+    if (choices && Array.isArray(choices) && choices.length > 0) {
+      const delta = field(choices[0], "delta");
+      if (delta !== null) {
+        return field(delta, "content", "") || "";
+      }
     }
-    const delta = field(choices[0], "delta");
-    if (delta === null) {
-      return "";
+    if (chunk && typeof chunk === "object") {
+      if (typeof chunk.content === "string") {
+        return chunk.content;
+      }
+      if (chunk.content && typeof chunk.content === "object" && Array.isArray(chunk.content)) {
+        const textParts: string[] = [];
+        for (const part of chunk.content) {
+          if (part && part.type === "text" && typeof part.text === "string") {
+            textParts.push(part.text);
+          } else if (part && part.type === "tool_use") {
+            continue;
+          }
+        }
+        return textParts.join("");
+      }
+      if (typeof chunk.text === "string") {
+        return chunk.text;
+      }
     }
-    return field(delta, "content", "") || "";
+    return "";
   }
 
   /**
@@ -72,6 +97,17 @@ export class CompletionTransportParser extends BaseTransportParser {
     }
     if (typeof lcContent === "object" && lcContent !== null) {
       return field(lcContent, "content", "") || "";
+    }
+    if (lcContent && typeof lcContent === "object" && Array.isArray(lcContent)) {
+      const textParts: string[] = [];
+      for (const part of lcContent) {
+        if (part && part.type === "text" && typeof part.text === "string") {
+          textParts.push(part.text);
+        } else if (part && part.type === "tool_use") {
+          continue;
+        }
+      }
+      return textParts.join("");
     }
 
     return "";

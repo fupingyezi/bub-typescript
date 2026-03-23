@@ -282,12 +282,39 @@ export class ChatClient {
    * 解析响应格式
    * @param payload 响应载荷
    * @param transport 传输类型
+   * @param streamMode 流模式，可选
    * @returns 响应格式
    */
   private static _resolveResponseFormat(
     payload: any,
     transport: TransportKind | null = null,
+    streamMode?: "messages" | "updates" | "values",
   ): ResponseFormat {
+    if (streamMode) {
+      if (streamMode === "messages") {
+        return "messages";
+      }
+      if (streamMode === "updates" || streamMode === "values") {
+        if (Array.isArray(payload)) {
+          return "responses";
+        }
+        if (field(payload, "output") !== null) {
+          return "responses";
+        }
+        if (field(payload, "output_text") !== null) {
+          return "responses";
+        }
+        const eventType = field(payload, "type");
+        if (
+          typeof eventType === "string" &&
+          eventType.startsWith("response.")
+        ) {
+          return "responses";
+        }
+        return "completion";
+      }
+    }
+
     if (
       transport !== null &&
       (transport === "invoke" || transport === "stream")
@@ -327,15 +354,18 @@ export class ChatClient {
    * 根据载荷获取解析器
    * @param payload 响应载荷
    * @param transport 传输类型
+   * @param streamMode 流模式，可选
    * @returns 解析器
    */
   private static _parserForPayload(
     payload: any,
     transport: TransportKind | null = null,
+    streamMode?: "messages" | "updates" | "values",
   ): any {
     const responseFormat = ChatClient._resolveResponseFormat(
       payload,
       transport,
+      streamMode,
     );
     return parserForTransport(responseFormat);
   }
@@ -779,6 +809,8 @@ export class ChatClient {
       tape?: string | null;
       context?: TapeContext | null;
       tools?: ToolInput;
+      stream?: boolean;
+      streamMode?: "messages" | "updates" | "values";
       [key: string]: any;
     } = {},
   ): Promise<AsyncTextStream> {
@@ -791,6 +823,8 @@ export class ChatClient {
       tape = null,
       context = null,
       tools = null,
+      stream = true,
+      streamMode,
       ...kwargs
     } = options;
 
@@ -814,6 +848,8 @@ export class ChatClient {
       maxTokens || undefined,
       undefined,
       kwargs,
+      stream,
+      streamMode,
     );
 
     return this._buildAsyncTextStream(
@@ -842,6 +878,8 @@ export class ChatClient {
       tape?: string | null;
       context?: TapeContext | null;
       tools?: ToolInput;
+      stream?: boolean;
+      streamMode?: "messages" | "updates" | "values";
       [key: string]: any;
     } = {},
   ): Promise<AsyncStreamEvents> {
@@ -854,6 +892,8 @@ export class ChatClient {
       tape = null,
       context = null,
       tools = null,
+      stream = true,
+      streamMode,
       ...kwargs
     } = options;
 
@@ -877,6 +917,8 @@ export class ChatClient {
       maxTokens || undefined,
       undefined,
       kwargs,
+      stream,
+      streamMode,
     );
 
     return this._buildAsyncStreamEvents(
@@ -901,7 +943,7 @@ export class ChatClient {
     providerName: string,
     modelId: string,
   ): Promise<AsyncStreamEvents> {
-    const { transport, payload } = response;
+    const { transport, streamMode, payload } = response;
     const state: StreamState = { error: null, usage: null };
     const assembler = new ToolCallAssembler();
     let usage: Record<string, any> | null = null;
@@ -914,38 +956,56 @@ export class ChatClient {
       try {
         if (transport === "stream" && Symbol.asyncIterator in payload) {
           for await (const chunk of payload) {
-            const deltas = self._extractChunkToolCallDeltas(chunk, transport);
+            const processedChunk = self._processStreamChunk(chunk, streamMode);
+            const deltas = self._extractChunkToolCallDeltas(
+              processedChunk,
+              transport,
+              streamMode,
+            );
             if (deltas && deltas.length > 0) {
               assembler.addDeltas(deltas);
               for (const delta of deltas) {
                 yield new StreamEvent("tool_call", delta);
               }
             }
-            const text = self._extractChunkText(chunk, transport);
+            const text = self._extractChunkText(
+              processedChunk,
+              transport,
+              streamMode,
+            );
             if (text) {
               finalText += text;
-              yield new StreamEvent("text", { text });
+              yield new StreamEvent("text", { delta: text });
             }
-            const chunkUsage = self._extractUsage(chunk, transport);
+            const chunkUsage = self._extractUsage(processedChunk, transport);
             if (chunkUsage) {
               usage = chunkUsage;
             }
           }
         } else if (Array.isArray(payload)) {
           for (const chunk of payload) {
-            const deltas = self._extractChunkToolCallDeltas(chunk, transport);
+            const processedChunk = self._processStreamChunk(chunk, streamMode);
+            const deltas = self._extractChunkToolCallDeltas(
+              processedChunk,
+              transport,
+              streamMode,
+            );
             if (deltas && deltas.length > 0) {
               assembler.addDeltas(deltas);
               for (const delta of deltas) {
                 yield new StreamEvent("tool_call", delta);
               }
             }
-            const text = self._extractChunkText(chunk, transport);
+            const text = self._extractChunkText(
+              processedChunk,
+              transport,
+              streamMode,
+            );
             if (text) {
               finalText += text;
-              yield new StreamEvent("text", { text });
+              yield new StreamEvent("text", { delta: text });
             }
-            const chunkUsage = self._extractUsage(chunk, transport);
+            const chunkUsage = self._extractUsage(processedChunk, transport);
             if (chunkUsage) {
               usage = chunkUsage;
             }
@@ -961,7 +1021,7 @@ export class ChatClient {
           const text = self._extractText(payload, transport);
           if (text) {
             finalText = text;
-            yield new StreamEvent("text", { text });
+            yield new StreamEvent("text", { delta: text });
           }
           usage = self._extractUsage(payload, transport);
         }
@@ -1031,13 +1091,15 @@ export class ChatClient {
    * 提取工具调用增量
    * @param chunk 数据块
    * @param transport 传输类型
+   * @param streamMode 流模式
    * @returns 工具调用增量数组
    */
   private _extractChunkToolCallDeltas(
     chunk: any,
     transport: TransportKind | null,
+    streamMode?: "messages" | "updates" | "values",
   ): any[] {
-    const parser = ChatClient._parserForPayload(chunk, transport);
+    const parser = ChatClient._parserForPayload(chunk, transport, streamMode);
     return parser.extractChunkToolCallDeltas(chunk);
   }
 
@@ -1056,14 +1118,6 @@ export class ChatClient {
     }
 
     if (streamMode === "updates") {
-      if (chunk && typeof chunk === "object") {
-        if (chunk.data !== undefined) {
-          return chunk.data;
-        }
-        if (chunk.content !== undefined) {
-          return chunk.content;
-        }
-      }
       return chunk;
     }
 
@@ -1089,13 +1143,15 @@ export class ChatClient {
    * 提取数据块文本
    * @param chunk 数据块
    * @param transport 传输类型
+   * @param streamMode 流模式
    * @returns 文本
    */
   private _extractChunkText(
     chunk: any,
     transport: TransportKind | null,
+    streamMode?: "messages" | "updates" | "values",
   ): string {
-    const parser = ChatClient._parserForPayload(chunk, transport);
+    const parser = ChatClient._parserForPayload(chunk, transport, streamMode);
     return parser.extractChunkText(chunk);
   }
 
@@ -1210,11 +1266,16 @@ export class ChatClient {
             const deltas = self._extractChunkToolCallDeltas(
               processedChunk,
               transport,
+              streamMode,
             );
             if (deltas && deltas.length > 0) {
               assembler.addDeltas(deltas);
             }
-            const text = self._extractChunkText(processedChunk, transport);
+            const text = self._extractChunkText(
+              processedChunk,
+              transport,
+              streamMode,
+            );
             if (text) {
               parts.push(text);
               yield text;
@@ -1227,11 +1288,16 @@ export class ChatClient {
             const deltas = self._extractChunkToolCallDeltas(
               processedChunk,
               transport,
+              streamMode,
             );
             if (deltas && deltas.length > 0) {
               assembler.addDeltas(deltas);
             }
-            const text = self._extractChunkText(processedChunk, transport);
+            const text = self._extractChunkText(
+              processedChunk,
+              transport,
+              streamMode,
+            );
             if (text) {
               parts.push(text);
               yield text;

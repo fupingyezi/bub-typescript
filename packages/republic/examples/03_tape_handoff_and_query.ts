@@ -1,5 +1,6 @@
 import { LLM } from "../src/llm";
 import { TapeContext } from "../src/tape";
+import { InMemoryTapeStore } from "../src/tape";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -12,18 +13,22 @@ if (!OPENAI_API_KEY) {
   process.exit(1);
 }
 
+const sharedStore = new InMemoryTapeStore();
+
 async function runTapeDemo() {
   console.log("=== Tape Handoff 和 Query 示例 ===\n");
 
-  const llm = new LLM("openrouter:z-ai/glm-4.5-air:free", {
+  const llm = new LLM("xunfei:4.0Ultra", {
     apiKey: OPENAI_API_KEY,
     apiBase: OPENAI_API_BASE,
     verbose: 1,
+    tapeStore: sharedStore,
   });
   console.log(`LLM 初始化: ${llm.toString()}\n`);
 
   console.log("1. 创建 Tape 实例");
   const tape = llm.tape("my-session");
+  tape.handoff("model-01", { user: "用户A" });
   console.log(`Tape 创建成功: ${tape.toString()}\n`);
 
   console.log("2. 多轮对话存储到 Tape");
@@ -49,7 +54,9 @@ async function runTapeDemo() {
   for (const entry of entries) {
     if (entry.kind === "message") {
       const msg = entry.payload;
-      console.log(`  [${entry.kind}] ${msg.role}: ${msg.content?.substring(0, 50)}...`);
+      console.log(
+        `  [${entry.kind}] ${msg.role}: ${msg.content?.substring(0, 50)}...`,
+      );
     } else {
       console.log(`  [${entry.kind}]`);
     }
@@ -57,14 +64,19 @@ async function runTapeDemo() {
   console.log();
 
   console.log("4. Tape Handoff - 交接给另一个 LLM");
-  const handoffEntries = tape.handoff("handoff-to-b", { user: "用户B" }, { reason: "演示交接" });
+  const handoffEntries = tape.handoff(
+    "handoff-to-b",
+    { user: "用户B" },
+    { reason: "演示交接" },
+  );
   console.log(`创建交接锚点: ${handoffEntries[0].payload.name}`);
   console.log(`交接状态: ${JSON.stringify(handoffEntries[0].payload.state)}`);
 
-  const llm2 = new LLM("openrouter:z-ai/glm-4.5-air:free", {
+  const llm2 = new LLM("xunfei:4.0Ultra", {
     apiKey: OPENAI_API_KEY,
     apiBase: OPENAI_API_BASE,
     verbose: 1,
+    tapeStore: sharedStore,
   });
   console.log(`第二个 LLM 初始化: ${llm2.toString()}`);
 
@@ -79,11 +91,15 @@ async function runTapeDemo() {
   console.log("5. TapeContext 用法演示");
   const lastContext = new TapeContext();
   const messagesWithLastContext = tape.readMessages(lastContext);
-  console.log(`使用 LAST_ANCHOR 上下文的消息数: ${messagesWithLastContext.length}`);
+  console.log(
+    `使用 LAST_ANCHOR 上下文的消息数: ${messagesWithLastContext.length}`,
+  );
 
   const afterAnchorContext = new TapeContext("handoff-to-b");
   const messagesAfterHandoff = tape2.readMessages(afterAnchorContext);
-  console.log(`使用 "handoff-to-b" 锚点后的消息数: ${messagesAfterHandoff.length}`);
+  console.log(
+    `使用 "handoff-to-b" 锚点后的消息数: ${messagesAfterHandoff.length}`,
+  );
 
   console.log("\n=== Tape 示例完成 ===");
 }

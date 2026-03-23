@@ -628,6 +628,8 @@ export class LLMCore {
    * @param maxTokens 最大token数
    * @param reasoningEffort 推理努力程度
    * @param kwargs 其他参数
+   * @param stream 是否流式传输，可选，用于运行时覆盖 api_format
+   * @param streamMode 流模式，可选，用于运行时覆盖 stream_mode
    * @returns 传输响应
    */
   async runChat(
@@ -638,11 +640,15 @@ export class LLMCore {
     maxTokens: number | undefined,
     reasoningEffort: any | undefined,
     kwargs: Record<string, any>,
+    stream?: boolean,
+    streamMode?: StreamMode,
   ): Promise<TransportResponse> {
     const failedModels: string[] = [];
     let lastError: RepbulicError | undefined;
 
-    const shouldStream = this._api_format === "stream";
+    const shouldStream =
+      stream !== undefined ? stream : this._api_format === "stream";
+    const resolvedStreamMode = streamMode || this._stream_mode;
 
     // 遍历所有客户端实例开始调用
     for await (const [providerName, modelId, client] of this.iterClients(
@@ -658,7 +664,7 @@ export class LLMCore {
             toolsPayload,
             maxTokens,
             shouldStream,
-            this._stream_mode,
+            resolvedStreamMode,
             reasoningEffort,
             kwargs,
           );

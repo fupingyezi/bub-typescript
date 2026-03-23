@@ -519,6 +519,8 @@ export class LLM {
       maxTokens?: number | null;
       tape?: string | null;
       context?: TapeContext | null;
+      stream?: boolean;
+      streamMode?: "messages" | "updates" | "values";
       [key: string]: any;
     },
   ): Promise<AsyncTextStream> {
@@ -543,6 +545,8 @@ export class LLM {
       maxTokens?: number | null;
       tape?: string | null;
       context?: TapeContext | null;
+      stream?: boolean;
+      streamMode?: "messages" | "updates" | "values";
       [key: string]: any;
     },
   ): Promise<AsyncTextStream> {
@@ -568,6 +572,8 @@ export class LLM {
       tape?: string | null;
       context?: TapeContext | null;
       tools?: ToolInput;
+      stream?: boolean;
+      streamMode?: "messages" | "updates" | "values";
       [key: string]: any;
     },
   ): Promise<AsyncStreamEvents> {
@@ -593,6 +599,8 @@ export class LLM {
       tape?: string | null;
       context?: TapeContext | null;
       tools?: ToolInput;
+      stream?: boolean;
+      streamMode?: "messages" | "updates" | "values";
       [key: string]: any;
     },
   ): Promise<AsyncStreamEvents> {
