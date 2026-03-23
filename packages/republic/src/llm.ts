@@ -3,6 +3,7 @@ import {
   AsyncStreamEvents,
   AsyncTextStream,
   ToolAutoResult,
+  ErrorPayload,
 } from "@/core/results";
 import {
   AsyncTapeManager,
@@ -373,11 +374,18 @@ export class LLM {
       return ToolAutoResult.textResult(textResult);
     }
 
-    const toolResults = await this.tools.executeAsync(
-      toolCalls,
-      options?.tools || null,
-      null,
-    );
+    const toolResults = await this.tools
+      .executeAsync(toolCalls, options?.tools || null, null)
+      .catch((err) => {
+        if (err instanceof ErrorPayload) {
+          return {
+            toolResults: [],
+            toolCalls,
+            error: err,
+          };
+        }
+        throw err;
+      });
 
     if (toolResults.error) {
       return ToolAutoResult.errorResult(toolResults.error, {

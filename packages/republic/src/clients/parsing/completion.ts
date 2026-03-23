@@ -59,14 +59,22 @@ export class CompletionTransportParser extends BaseTransportParser {
     }
 
     const choices = field(response, "choices");
-    if (!choices || !Array.isArray(choices) || choices.length === 0) {
-      return "";
+    if (choices && Array.isArray(choices) && choices.length > 0) {
+      const message = field(choices[0], "message");
+      if (message !== null) {
+        return field(message, "content", "") || "";
+      }
     }
-    const message = field(choices[0], "message");
-    if (message === null) {
-      return "";
+
+    const lcContent = response.content;
+    if (typeof lcContent === "string") {
+      return lcContent;
     }
-    return field(message, "content", "") || "";
+    if (typeof lcContent === "object" && lcContent !== null) {
+      return field(lcContent, "content", "") || "";
+    }
+
+    return "";
   }
 
   /**
@@ -75,27 +83,53 @@ export class CompletionTransportParser extends BaseTransportParser {
    * @returns 工具调用数组
    */
   extractToolCalls(response: any): Record<string, any>[] {
+    let toolCalls: any[] = [];
+
     const choices = field(response, "choices");
-    if (!choices || !Array.isArray(choices) || choices.length === 0) {
-      return [];
+    if (choices && Array.isArray(choices) && choices.length > 0) {
+      const message = field(choices[0], "message");
+      if (message !== null) {
+        toolCalls = field(message, "tool_calls") || [];
+      }
     }
-    const message = field(choices[0], "message");
-    if (message === null) {
-      return [];
+
+    if (toolCalls.length === 0) {
+      toolCalls = field(response, "tool_calls") || [];
     }
-    const toolCalls = field(message, "tool_calls") || [];
+
+    if (toolCalls.length === 0) {
+      const lcContent = response.content;
+      if (typeof lcContent === "object" && lcContent !== null) {
+        toolCalls = field(lcContent, "tool_calls") || [];
+      }
+    }
+
     const calls: Record<string, any>[] = [];
     for (const toolCall of toolCalls) {
       const func = field(toolCall, "function");
-      if (func === null) {
-        continue;
+      let entry: Record<string, any>;
+
+      if (func !== null) {
+        entry = {
+          function: {
+            name: field(func, "name"),
+            arguments: field(func, "arguments"),
+          },
+        };
+      } else {
+        const name = field(toolCall, "name");
+        const args = field(toolCall, "args");
+        if (!name) {
+          continue;
+        }
+        entry = {
+          function: {
+            name: name,
+            arguments: typeof args === "object" ? JSON.stringify(args) : args,
+          },
+        };
       }
-      const entry: Record<string, any> = {
-        function: {
-          name: field(func, "name"),
-          arguments: field(func, "arguments"),
-        },
-      };
+
       const callId = field(toolCall, "id");
       if (callId) {
         entry["id"] = callId;

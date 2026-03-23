@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { LLM } from "../src/llm";
+import { Tool } from "../src/tools/schema";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_API_BASE = process.env.OPENAI_API_BASE;
@@ -9,7 +10,25 @@ if (!OPENAI_API_KEY) {
   process.exit(1);
 }
 
-const weatherTool = [
+const weatherData: Record<string, string> = {
+  北京: "北京今天天气晴朗，气温25°C",
+  上海: "上海今天多云转晴，气温28°C",
+  广州: "广州今天有雷阵雨，气温30°C",
+  深圳: "深圳今天晴天，气温29°C",
+};
+
+const getWeatherRunnable = Tool.fromCallable(
+  async (args: { city: string }) => {
+    const city = args.city || "未知";
+    return weatherData[city] || "数据暂不可用";
+  },
+  {
+    name: "get_weather",
+    description: "获取指定城市的天气信息",
+  },
+);
+
+const weatherToolSchema = [
   {
     type: "function" as const,
     function: {
@@ -26,8 +45,10 @@ const weatherTool = [
   },
 ];
 
+const weatherToolRunnable = [getWeatherRunnable];
+
 function createLLM(): LLM {
-  return new LLM("openrouter:z-ai/glm-4.5-air:free", {
+  return new LLM("xunfei:4.0Ultra", {
     apiKey: OPENAI_API_KEY,
     apiBase: OPENAI_API_BASE,
     verbose: 1,
@@ -43,7 +64,7 @@ async function manualToolMode() {
 
   try {
     const toolCalls = await llm.toolCalls("北京天气怎么样？", {
-      tools: weatherTool,
+      tools: weatherToolSchema,
     });
 
     console.log("步骤2: 收到工具调用:");
@@ -51,13 +72,6 @@ async function manualToolMode() {
 
     if (toolCalls && toolCalls.length > 0) {
       console.log("\n步骤3: 手动执行工具...\n");
-
-      const weatherData: Record<string, string> = {
-        北京: "北京今天天气晴朗，气温25°C",
-        上海: "上海今天多云转晴，气温28°C",
-        广州: "广州今天有雷阵雨，气温30°C",
-        深圳: "深圳今天晴天，气温29°C",
-      };
 
       for (const call of toolCalls) {
         const args =
@@ -89,7 +103,7 @@ async function autoToolMode() {
 
   try {
     const result = await llm.runTools("上海天气怎么样？", {
-      tools: weatherTool,
+      tools: weatherToolRunnable,
     });
 
     console.log("步骤2: 收到执行结果");

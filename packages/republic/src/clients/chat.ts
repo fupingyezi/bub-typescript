@@ -662,7 +662,7 @@ export class ChatClient {
       context || undefined,
       tools,
       true,
-      true,
+      false,
     );
     if (prepared.contextError !== null) {
       throw prepared.contextError;
