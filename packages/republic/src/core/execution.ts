@@ -1,4 +1,4 @@
-import { ChatOpenAI } from "@langchain/openai";
+import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 import {
   HumanMessage,
   SystemMessage,
@@ -6,7 +6,10 @@ import {
   ToolMessage,
   BaseMessage,
 } from "@langchain/core/messages";
-import { createLangchainLLMClient } from "./client-registry";
+import {
+  createLangchainLLMClient,
+  createEmbeddingsClient,
+} from "./client-registry";
 import { ErrorKindType, ErrorKind } from "@/types";
 import { RepbulicError } from "./errors";
 
@@ -386,6 +389,34 @@ export class LLMCore {
       this._client_cache[cacheKey] = client;
     }
     return this._client_cache[cacheKey];
+  }
+
+  async getEmbeddingsClient(
+    provider: string,
+    model?: string,
+  ): Promise<OpenAIEmbeddings | any> {
+    const resolvedModel = model || this._model;
+    const apiKey = await this._resolveApiKey(provider);
+    const apiBase = this._resolveApiBase(provider);
+    const cacheKey = this._freezeCacheKey(
+      provider,
+      resolvedModel,
+      apiKey,
+      apiBase,
+    );
+
+    const embeddingsCacheKey = `embeddings_${cacheKey}`;
+    if (!(embeddingsCacheKey in this._client_cache)) {
+      const client = createEmbeddingsClient({
+        provider,
+        model: resolvedModel,
+        apiKey,
+        apiBaseUrl: apiBase,
+        configuration: this._client_args,
+      });
+      this._client_cache[embeddingsCacheKey] = client;
+    }
+    return this._client_cache[embeddingsCacheKey];
   }
 
   /**

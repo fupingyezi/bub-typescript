@@ -1,4 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
+import { OpenAIEmbeddings } from "@langchain/openai";
+import { ZhipuAIEmbeddings } from "@langchain/community/embeddings/zhipuai";
 
 /**
  * LLM配置接口
@@ -34,17 +36,93 @@ export interface LLMConfig {
 export function createLangchainLLMClient(config: LLMConfig): ChatOpenAI {
   const { model, provider, apiKey, apiBaseUrl, configuration } = config;
 
-  // 如果没有显式提供 provider，从 model 字符串中解析
-  const resolvedProvider =
-    provider || (model.includes(":") ? model.split(":")[0] : "unknown");
+  let resolvedProvider = provider || "unknown";
+  let resolvedModel = model;
 
-  // 打印 provider 信息用于调试
-  if (provider || !model.includes(":")) {
-    console.log(`[LLM] Using provider: ${resolvedProvider}, model: ${model}`);
+  if (!provider && model.includes(":")) {
+    const parts = model.split(":");
+    resolvedProvider = parts[0];
+    resolvedModel = parts.slice(1).join(":");
   }
 
+  console.log(
+    `[LLM] Using provider: ${resolvedProvider}, model: ${resolvedModel}`,
+  );
+
   return new ChatOpenAI({
-    model,
+    model: resolvedModel,
+    apiKey,
+    configuration: apiBaseUrl ? { baseURL: apiBaseUrl } : undefined,
+    ...configuration,
+  });
+}
+
+/**
+ * Embeddings配置接口
+ */
+export interface EmbeddingsConfig {
+  /**
+   * 模型名称
+   */
+  model: string;
+  /**
+   * 提供商名称
+   */
+  provider?: string;
+  /**
+   * API密钥
+   */
+  apiKey?: string;
+  /**
+   * API基础URL
+   */
+  apiBaseUrl?: string;
+  /**
+   * 配置选项
+   */
+  configuration?: Record<string, any>;
+}
+
+/**
+ * 创建LangChain Embeddings客户端
+ * @param config Embeddings配置
+ * @returns Embeddings客户端
+ */
+export function createEmbeddingsClient(
+  config: EmbeddingsConfig,
+): OpenAIEmbeddings | ZhipuAIEmbeddings {
+  const { model, provider, apiKey, apiBaseUrl, configuration } = config;
+
+  let resolvedProvider = provider || "unknown";
+  let resolvedModel = model;
+
+  if (!provider && model.includes(":")) {
+    const parts = model.split(":");
+    resolvedProvider = parts[0];
+    resolvedModel = parts.slice(1).join(":");
+  }
+
+  console.log(
+    `[LLM] Using provider: ${resolvedProvider}, model: ${resolvedModel}`,
+  );
+
+  if (resolvedProvider === "zhipu" || resolvedProvider === "z.ai") {
+    if (resolvedModel === "embedding-2" || resolvedModel === "embedding-3")
+      return new ZhipuAIEmbeddings({
+        modelName: resolvedModel,
+        apiKey,
+        ...configuration,
+      });
+    else
+      return new ZhipuAIEmbeddings({
+        modelName: "embedding-3",
+        apiKey,
+        ...configuration,
+      });
+  }
+
+  return new OpenAIEmbeddings({
+    model: resolvedModel,
     apiKey,
     configuration: apiBaseUrl ? { baseURL: apiBaseUrl } : undefined,
     ...configuration,

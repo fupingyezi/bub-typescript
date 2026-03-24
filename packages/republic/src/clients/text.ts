@@ -1,14 +1,6 @@
 import { ErrorPayload } from "@/core/results";
 import { ErrorKind } from "@/types";
 
-interface DecisionOutput {
-  value: boolean;
-}
-
-interface ClassifyDecision {
-  label: string;
-}
-
 export class TextClient {
   private _chat: any;
 
@@ -96,20 +88,22 @@ Answer by calling the tool with \`label\` set to one of the choices.
     const { tape = null, context = null } = options;
     const prompt = TextClient._buildIfPrompt(inputText, question);
     const toolSchema = {
-      name: "if_decision",
-      description: "Return a boolean.",
-      parameters: {
-        type: "object",
-        properties: {
-          value: {
-            type: "boolean",
+      type: "function",
+      function: {
+        name: "if_decision",
+        description: "Return a boolean.",
+        parameters: {
+          type: "object",
+          properties: {
+            value: {
+              type: "boolean",
+            },
           },
+          required: ["value"],
         },
-        required: ["value"],
       },
     };
-    const calls = await this._chat.toolCallsAsync({
-      prompt,
+    const calls = await this._chat.toolCallsAsync(prompt, {
       tools: [toolSchema],
       tape,
       context,
@@ -137,20 +131,22 @@ Answer by calling the tool with \`label\` set to one of the choices.
     const choicesStr = normalized.join(", ");
     const prompt = TextClient._buildClassifyPrompt(inputText, choicesStr);
     const toolSchema = {
-      name: "classify_decision",
-      description: "Return one label.",
-      parameters: {
-        type: "object",
-        properties: {
-          label: {
-            type: "string",
+      type: "function",
+      function: {
+        name: "classify_decision",
+        description: "Return one label.",
+        parameters: {
+          type: "object",
+          properties: {
+            label: {
+              type: "string",
+            },
           },
+          required: ["label"],
         },
-        required: ["label"],
       },
     };
-    const calls = await this._chat.toolCallsAsync({
-      prompt,
+    const calls = await this._chat.toolCallsAsync(prompt, {
       tools: [toolSchema],
       tape,
       context,

@@ -22,10 +22,8 @@ export class EmbeddingClient {
       return [this._core.provider, this._core.model];
     }
     const modelId = model || this._core.model;
-    const resolved = LLMCore.resolveModelProvider(
-      modelId,
-      provider || undefined,
-    );
+    const resolvedProvider = provider || this._core.provider;
+    const resolved = LLMCore.resolveModelProvider(modelId, resolvedProvider);
     return [resolved.provider, resolved.model];
   }
 
@@ -45,13 +43,14 @@ export class EmbeddingClient {
   ): Promise<any> {
     const { model = null, provider = null, ...kwargs } = options;
     const [providerName, modelId] = this._resolveProviderModel(model, provider);
-    const client = await this._core.getClient(providerName);
+    const client = await this._core.getEmbeddingsClient(providerName, modelId);
     try {
-      const response = await (client as any)._embedding({
-        model: modelId,
-        inputs,
-        ...kwargs,
-      });
+      let response;
+      if (typeof inputs === "string") {
+        response = await client.embedQuery(inputs);
+      } else {
+        response = await client.embedDocuments(inputs);
+      }
       return response;
     } catch (exc) {
       const kind = this._core.classifyException(exc as Error);
