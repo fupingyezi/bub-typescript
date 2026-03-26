@@ -1,0 +1,91 @@
+export const DEFAULT_MODEL = "openrouter:qwen/qwen3-coder-next";
+export const DEFAULT_MAX_TOKENS = 1024;
+export const DEFAULT_HOME = new URL("file://~/.bub").pathname;
+
+export interface AgentSettings {
+  home: string;
+  model: string;
+  apiKey: string | Record<string, string> | null;
+  apiBase: string | Record<string, string> | null;
+  maxSteps: number;
+  maxTokens: number;
+  modelTimeoutSeconds: number | null;
+}
+
+function getEnv(key: string): string | undefined {
+  return process.env[key];
+}
+
+function getEnvInt(key: string, defaultValue: number): number {
+  const value = process.env[key];
+  if (value === undefined) return defaultValue;
+  const parsed = parseInt(value, 10);
+  return isNaN(parsed) ? defaultValue : parsed;
+}
+
+export class AgentSettingsImpl implements AgentSettings {
+  home: string;
+  model: string;
+  apiKey: string | Record<string, string> | null;
+  apiBase: string | Record<string, string> | null;
+  maxSteps: number;
+  maxTokens: number;
+  modelTimeoutSeconds: number | null;
+
+  constructor(data?: Partial<AgentSettings>) {
+    this.home = data?.home ?? DEFAULT_HOME;
+    this.model = data?.model ?? DEFAULT_MODEL;
+    this.apiKey = data?.apiKey ?? null;
+    this.apiBase = data?.apiBase ?? null;
+    this.maxSteps = data?.maxSteps ?? 50;
+    this.maxTokens = data?.maxTokens ?? DEFAULT_MAX_TOKENS;
+    this.modelTimeoutSeconds = data?.modelTimeoutSeconds ?? null;
+  }
+
+  static fromEnv(): AgentSettingsImpl {
+    const apiKey = getEnv("BUB_API_KEY");
+    const apiBase = getEnv("BUB_API_BASE");
+
+    if (apiKey && apiBase) {
+      return new AgentSettingsImpl({
+        apiKey,
+        apiBase,
+      });
+    }
+
+    const multiApiKey: Record<string, string> = {};
+    const multiApiBase: Record<string, string> = {};
+
+    if (apiKey) {
+      multiApiKey["default"] = apiKey;
+    }
+    if (apiBase) {
+      multiApiBase["default"] = apiBase;
+    }
+
+    const envRegex = /^BUB_(.+)_API_KEY$/;
+    const baseRegex = /^BUB_(.+)_API_BASE$/;
+
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value === undefined) continue;
+
+      const keyMatch = key.match(envRegex);
+      if (keyMatch) {
+        const provider = keyMatch[1].toLowerCase();
+        multiApiKey[provider] = value;
+        continue;
+      }
+
+      const baseMatch = key.match(baseRegex);
+      if (baseMatch) {
+        const provider = baseMatch[1].toLowerCase();
+        multiApiBase[provider] = value;
+      }
+    }
+
+    return new AgentSettingsImpl({
+      apiKey: Object.keys(multiApiKey).length > 0 ? multiApiKey : null,
+      apiBase: Object.keys(multiApiBase).length > 0 ? multiApiBase : null,
+    });
+  }
+}
