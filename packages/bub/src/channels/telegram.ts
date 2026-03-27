@@ -122,6 +122,11 @@ interface TelegramResponse<T> {
 const NO_ACCESS_MESSAGE =
   "You are not allowed to chat with me. Please deploy your own instance of Bub.";
 
+/**
+ * 过滤对象中的 null/undefined 字段，返回只包含有效字段的新对象。
+ * @param obj - 待过滤的对象
+ * @returns 去除 null/undefined 字段后的新对象
+ */
 function excludeNone<T extends Record<string, any>>(obj: T): Partial<T> {
   const result: Partial<T> = {};
   for (const [key, value] of Object.entries(obj)) {
@@ -132,10 +137,21 @@ function excludeNone<T extends Record<string, any>>(obj: T): Partial<T> {
   return result;
 }
 
+/**
+ * 从环境变量中读取字符串值。
+ * @param key - 环境变量名
+ * @param defaultValue - 默认值，默认为空字符串
+ * @returns 环境变量的字符串值
+ */
 function getEnv(key: string, defaultValue: string = ""): string {
   return process.env[key] ?? defaultValue;
 }
 
+/**
+ * 获取 Telegram 消息的类型字符串。
+ * @param message - Telegram 消息对象
+ * @returns 消息类型，如 `"text"`、`"photo"`、`"audio"` 等
+ */
 function getMessageType(message: TelegramMessage): string {
   if (message.text !== undefined) return "text";
   if (message.photo !== undefined && message.photo.length > 0) return "photo";
@@ -158,6 +174,10 @@ const MSG_TYPE_TO_MEDIA_TYPE: Record<string, MediaType> = {
   document: "document",
 };
 
+/**
+ * Telegram 频道实现，通过 Telegram Bot API 接收和发送消息。
+ * 支持文本、图片、音频、视频、文档等多种消息类型。
+ */
 export class TelegramChannel extends Channel {
   static name = "telegram";
   name = "telegram";
@@ -193,10 +213,17 @@ export class TelegramChannel extends Channel {
     this.proxy = getEnv("BUB_TELEGRAM_PROXY", "") || undefined;
   }
 
+  /**
+   * 是否需要防抖处理。Telegram 频道始终需要防抖。
+   */
   get needs_debounce(): boolean {
     return true;
   }
 
+  /**
+   * 启动 Telegram 长轮询 polling 循环。
+   * @param stopEvent - 停止信号对象
+   */
   async start(stopEvent: { isSet: () => boolean }): Promise<void> {
     this.stopped = false;
     console.log(
@@ -221,6 +248,9 @@ export class TelegramChannel extends Channel {
     poll();
   }
 
+  /**
+   * 停止 polling 并清除所有 typing 定时器。
+   */
   async stop(): Promise<void> {
     this.stopped = true;
     for (const interval of this.typingIntervals.values()) {
@@ -230,6 +260,10 @@ export class TelegramChannel extends Channel {
     console.log("[TelegramChannel] stopped");
   }
 
+  /**
+   * 向指定聊天发送消息。
+   * @param message - 出站的 ChannelMessage
+   */
   async send(message: ChannelMessage): Promise<void> {
     const chatId = message.chatId;
     let text = message.content;
@@ -249,6 +283,10 @@ export class TelegramChannel extends Channel {
     });
   }
 
+  /**
+   * 获取新的 Telegram 更新列表。
+   * @returns TelegramUpdate 数组
+   */
   private async getUpdates(): Promise<TelegramUpdate[]> {
     const params: Record<string, any> = {
       offset: this.offset,
@@ -259,6 +297,11 @@ export class TelegramChannel extends Channel {
     return response ?? [];
   }
 
+  /**
+   * 处理单个 Telegram 更新事件。
+   * 进行用户/聊天权限验证，并将合法消息转发给 onReceive 处理器。
+   * @param update - Telegram 更新对象
+   */
   private async handleUpdate(update: TelegramUpdate): Promise<void> {
     const message = update.message;
     if (!message) return;
@@ -299,6 +342,12 @@ export class TelegramChannel extends Channel {
     await this.onReceive(channelMessage);
   }
 
+  /**
+   * 将 Telegram 消息转换为 ChannelMessage。
+   * 根据消息类型解析内容，并构建包含元数据和生命周期的消息对象。
+   * @param message - Telegram 消息对象
+   * @returns 构建好的 ChannelMessage
+   */
   private async buildMessage(
     message: TelegramMessage,
   ): Promise<ChannelMessage> {
@@ -389,6 +438,12 @@ export class TelegramChannel extends Channel {
     );
   }
 
+  /**
+   * 检查消息是否应该被处理（是否为活跃消息）。
+   * 私聊消息始终活跃；群组消息需要包含 "bub" 或 "@bot"。
+   * @param message - Telegram 消息对象
+   * @returns 是否为活跃消息
+   */
   private checkFilter(message: TelegramMessage): boolean {
     const msgType = getMessageType(message);
     if (msgType === "unknown") return false;
@@ -404,6 +459,11 @@ export class TelegramChannel extends Channel {
     return false;
   }
 
+  /**
+   * 开始向指定聊天发送 "typing" 状态，每 4 秒重复一次。
+   * @param chatId - 目标聊天 ID
+   * @returns 返回一个停止函数，调用后停止 typing 状态
+   */
   private startTyping(chatId: string): Promise<() => void> {
     return new Promise<() => void>((resolve) => {
       const interval = setInterval(async () => {
@@ -426,6 +486,11 @@ export class TelegramChannel extends Channel {
     });
   }
 
+  /**
+   * 解析图片消息为文本描述。
+   * @param message - 包含图片的 Telegram 消息
+   * @returns 图片描述字符串
+   */
   private async parsePhoto(message: TelegramMessage): Promise<string> {
     const caption = message.caption ?? "";
     const photos = message.photo ?? [];
@@ -437,6 +502,11 @@ export class TelegramChannel extends Channel {
     return caption ? `[Photo message] Caption: ${caption}` : "[Photo message]";
   }
 
+  /**
+   * 解析音频消息为文本描述。
+   * @param message - 包含音频的 Telegram 消息
+   * @returns 音频描述字符串
+   */
   private async parseAudio(message: TelegramMessage): Promise<string> {
     const audio = message.audio;
     if (!audio) return "[Audio]";
@@ -449,6 +519,11 @@ export class TelegramChannel extends Channel {
     return `[Audio: ${title} (${duration}s)]`;
   }
 
+  /**
+   * 解析贴纸消息为文本描述。
+   * @param message - 包含贴纸的 Telegram 消息
+   * @returns 贴纸描述字符串
+   */
   private async parseSticker(message: TelegramMessage): Promise<string> {
     const sticker = message.sticker;
     if (!sticker) return "[Sticker]";
@@ -460,6 +535,11 @@ export class TelegramChannel extends Channel {
     return `[Sticker from ${setName}]`;
   }
 
+  /**
+   * 解析视频消息为文本描述。
+   * @param message - 包含视频的 Telegram 消息
+   * @returns 视频描述字符串
+   */
   private async parseVideo(message: TelegramMessage): Promise<string> {
     const video = message.video;
     const caption = message.caption ?? "";
@@ -469,6 +549,11 @@ export class TelegramChannel extends Channel {
     return result;
   }
 
+  /**
+   * 解析语音消息为文本描述。
+   * @param message - 包含语音的 Telegram 消息
+   * @returns 语音描述字符串
+   */
   private async parseVoice(message: TelegramMessage): Promise<string> {
     const voice = message.voice;
     if (!voice) return "[Voice message]";
@@ -476,6 +561,11 @@ export class TelegramChannel extends Channel {
     return `[Voice message: ${duration}s]`;
   }
 
+  /**
+   * 解析文件消息为文本描述。
+   * @param message - 包含文件的 Telegram 消息
+   * @returns 文件描述字符串
+   */
   private async parseDocument(message: TelegramMessage): Promise<string> {
     const doc = message.document;
     if (!doc) return "[Document]";
@@ -487,6 +577,11 @@ export class TelegramChannel extends Channel {
     return result;
   }
 
+  /**
+   * 解析视频笔记消息为文本描述。
+   * @param message - 包含视频笔记的 Telegram 消息
+   * @returns 视频笔记描述字符串
+   */
   private async parseVideoNote(message: TelegramMessage): Promise<string> {
     const videoNote = message.video_note;
     if (!videoNote) return "[Video note]";
@@ -494,6 +589,13 @@ export class TelegramChannel extends Channel {
     return `[Video note: ${duration}s]`;
   }
 
+  /**
+   * 调用 Telegram Bot API 接口。
+   * @param method - API 方法名
+   * @param params - 请求参数
+   * @returns API 返回的结果对象
+   * @throws API 返回错误时抛出异常
+   */
   private async apiCall<T>(
     method: string,
     params: Record<string, any> = {},
@@ -515,10 +617,21 @@ export class TelegramChannel extends Channel {
     return data.result as T;
   }
 
+  /**
+   * 向指定聊天发送文本消息。
+   * @param chatId - 目标聊天 ID
+   * @param text - 消息文本
+   */
   private async sendMessage(chatId: string, text: string): Promise<void> {
     await this.apiCall("sendMessage", { chat_id: chatId, text });
   }
 
+  /**
+   * 判断两个 Set 是否没有交集。
+   * @param setA - 第一个 Set
+   * @param setB - 第二个 Set
+   * @returns 没有交集时返回 `true`
+   */
   private isDisjoint(setA: Set<string>, setB: Set<string>): boolean {
     for (const item of setA) {
       if (setB.has(item)) return false;
@@ -526,6 +639,10 @@ export class TelegramChannel extends Channel {
     return true;
   }
 
+  /**
+   * 延迟指定毫秒数。
+   * @param ms - 延迟毫秒数
+   */
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }

@@ -20,6 +20,10 @@ export const DEFAULT_CHANNEL_SETTINGS: ChannelSettings = {
   activeTimeWindow: 60.0,
 };
 
+/**
+ * 带防抖的消息处理器，将短时间内的多条消息合并为一条。
+ * 支持活跃消息防抖和非活跃消息的最大等待时间。
+ */
 class BufferedMessageHandler {
   private handler: (message: ChannelMessage) => Promise<void>;
   private pendingMessages: ChannelMessage[] = [];
@@ -46,6 +50,10 @@ class BufferedMessageHandler {
     this.debounceSeconds = options.debounceSeconds;
   }
 
+  /**
+   * 重置防抖定时器。
+   * @param timeout - 延迟秒数
+   */
   private resetTimer(timeout: number): void {
     if (this.timer) {
       clearTimeout(this.timer);
@@ -55,6 +63,10 @@ class BufferedMessageHandler {
     }, timeout * 1000);
   }
 
+  /**
+   * 等待防抖定时器触发后处理待处理消息队列。
+   * 将队列中的消息合并为一条并调用处理器。
+   */
   private async process(): Promise<void> {
     return new Promise((resolve) => {
       this.event.once("ready", async () => {
@@ -71,6 +83,13 @@ class BufferedMessageHandler {
     });
   }
 
+  /**
+   * 接收一条消息并根据消息类型决定处理方式。
+   * - 命令消息：直接处理
+   * - 活跃消息：进入防抖队列
+   * - 非活跃消息：在活跃时间窗口内进入队列，否则忽略
+   * @param message - 待处理的 ChannelMessage
+   */
   async call(message: ChannelMessage): Promise<void> {
     const now = Date.now() / 1000;
     if (message.content.startsWith(",")) {
@@ -120,6 +139,10 @@ interface Task {
   cancel?: () => void;
 }
 
+/**
+ * Channel 管理器，负责启动所有 Channel、接收消息并分发到 framework 处理。
+ * 支持消息防抖、出站消息路由和优雅关闭。
+ */
 export class ChannelManager {
   private framework: BubFramework;
   private channels: Record<string, Channel>;
@@ -161,6 +184,10 @@ export class ChannelManager {
     return this._initPromise;
   }
 
+  /**
+   * 接收一条入站消息，根据 channel 类型决定是否需要防抖处理。
+   * @param message - 入站的 ChannelMessage
+   */
   async onReceive(message: ChannelMessage): Promise<void> {
     const channel = message.channel;
     const sessionId = message.sessionId;
@@ -191,6 +218,10 @@ export class ChannelManager {
     await this.sessionHandlers.get(sessionId)!(message);
   }
 
+  /**
+   * 将消息入队并触发消息事件。
+   * @param message - 待入队的 ChannelMessage
+   */
   private pushMessage(message: ChannelMessage): Promise<void> {
     return new Promise((resolve) => {
       this.messages.push(message);
@@ -199,10 +230,21 @@ export class ChannelManager {
     });
   }
 
+  /**
+   * 根据名称获取 Channel 实例。
+   * @param name - channel 名称
+   * @returns Channel 实例，不存在时返回 `undefined`
+   */
   getChannel(name: string): Channel | undefined {
     return this.channels[name];
   }
 
+  /**
+   * 将出站消息分发到对应的 Channel。
+   * 优先使用 `output_channel`，其次使用 `channel` 字段。
+   * @param message - 出站消息信封
+   * @returns 分发成功返回 `true`，未找到 channel 返回 `false`
+   */
   async dispatch(message: Envelope): Promise<boolean> {
     const channelName =
       fieldOf(message, "output_channel") ||
@@ -235,10 +277,19 @@ export class ChannelManager {
     return true;
   }
 
+  /**
+   * 移除指定 session 的消息处理器。
+   * @param sessionId - 要移除的 session ID
+   */
   async quit(sessionId: string): Promise<void> {
     this.sessionHandlers.delete(sessionId);
   }
 
+  /**
+   * 返回当前已启用的 Channel 列表。
+   * 若 `enabledChannelsList` 为 `["all"]`，则返回除 CLI 外的所有 channel。
+   * @returns 已启用的 Channel 数组
+   */
   enabledChannels(): Channel[] {
     if (this.enabledChannelsList.includes("all")) {
       return Object.values(this.channels).filter(
@@ -250,12 +301,20 @@ export class ChannelManager {
     );
   }
 
+  /**
+   * 创建一个封装了 `isStopped` 状态的停止事件对象。
+   * @returns 包含 `isSet()` 方法的停止事件对象
+   */
   private stopEvent(): { isSet: () => boolean } {
     return {
       isSet: () => this.isStopped,
     };
   }
 
+  /**
+   * 启动所有已启用的 Channel，绑定出站路由器，并进入消息处理主循环。
+   * 收到停止信号时优雅关闭所有 Channel。
+   */
   async listenAndRun(): Promise<void> {
     await this.init();
     this.framework.bindOutboundRouter(this);
@@ -308,6 +367,9 @@ export class ChannelManager {
     }
   }
 
+  /**
+   * 关闭所有已启用的 Channel 并取消所有进行中的任务。
+   */
   async shutdown(): Promise<void> {
     const count = this.ongoingTasks.length;
     this.ongoingTasks = [];

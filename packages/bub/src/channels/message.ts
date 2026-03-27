@@ -2,6 +2,9 @@ export type MessageKind = "error" | "normal" | "command";
 export type MediaType = "image" | "audio" | "video" | "document";
 export type DataFetcher = () => Promise<Uint8Array>;
 
+/**
+ * 表示媒体附件的类，封装了媒体类型、MIME 类型和获取数据的方式。
+ */
 export class MediaItem {
   readonly type: MediaType;
   readonly mimeType: string;
@@ -25,6 +28,11 @@ export class MediaItem {
     this.dataFetcher = options.dataFetcher;
   }
 
+  /**
+   * 获取媒体的 URL。
+   * 若存在直接 URL 则返回，否则通过 dataFetcher 获取数据并转换为 base64 data URL。
+   * @returns URL 字符串，无法获取时返回 `null`
+   */
   async getUrl(): Promise<string | null> {
     if (this.url) {
       return this.url;
@@ -42,6 +50,13 @@ export class MediaItem {
 
   /**
    * 辅助函数：处理不同环境下的 Base64 编码
+   */
+  /**
+   * 辅助函数：处理不同环境下的 Base64 编码。
+   * 在浏览器环境中使用 `btoa`，在 Node.js 环境中使用 `Buffer`。
+   * @param data - 待编码的二进制数据
+   * @returns Base64 编码字符串
+   * @throws 当前环境不支持 Base64 编码时抛出错误
    */
   private encodeToBase64(data: Uint8Array): string {
     // 检查是否在浏览器环境
@@ -63,11 +78,17 @@ export class MediaItem {
   }
 }
 
+/**
+ * 异步上下文管理器接口，用于管理消息处理期间的生命周期（如 Telegram 的 typing 状态）。
+ */
 export interface AsyncContextManager<T = void> extends AsyncDisposable {
   enter(): Promise<T>;
   exit(error?: Error): Promise<void>;
 }
 
+/**
+ * 表示一条频道消息的类，封装了消息内容、媒体、生命周期等信息。
+ */
 export class ChannelMessage {
   sessionId: string;
   channel: string;
@@ -111,12 +132,22 @@ export class ChannelMessage {
     }
   }
 
+  /**
+   * 获取消息上下文的字符串表示，格式为 `key = value|key = value`。
+   */
   get contextStr(): string {
     return Object.entries(this.context)
       .map(([key, value]) => `${key} = ${value}`)
       .join("|");
   }
 
+  /**
+   * 将一批消息合并为一条消息。
+   * 以最后一条消息为模板，内容和媒体分别拼接。
+   * @param batch - 非空的 ChannelMessage 数组
+   * @returns 合并后的 ChannelMessage
+   * @throws 若 batch 为空数组则抛出错误
+   */
   static formBatch(batch: ChannelMessage[]): ChannelMessage {
     if (!batch.length) {
       throw new Error("Batch cannot be empty");

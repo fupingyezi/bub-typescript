@@ -21,6 +21,13 @@ const SKILL_SOURCES: Array<"project" | "global" | "builtin"> = [
   "builtin",
 ];
 
+/**
+ * 解析 SKILL.md 文件头部的 YAML frontmatter，返回元数据键值对。
+ * frontmatter 格式为两行 `---` 之间的 YAML 内容。
+ * 所有键名统一转换为小写。
+ * @param content - SKILL.md 文件的完整文本内容
+ * @returns 解析后的元数据对象，解析失败时返回空对象
+ */
 function parseFrontmatter(content: string): Record<string, any> {
   const lines = content.split("\n");
   if (!lines || lines[0].trim() !== "---") {
@@ -49,6 +56,13 @@ function parseFrontmatter(content: string): Record<string, any> {
   return {};
 }
 
+/**
+ * 校验 skill 目录的 frontmatter 元数据是否合法。
+ * 要求 `name`、`description` 字段有效，且可选的 `metadata` 字段格式正确。
+ * @param skillDir - skill 目录的绝对路径
+ * @param metadata - 已解析的 frontmatter 元数据
+ * @returns 元数据合法时返回 `true`，否则返回 `false`
+ */
 function isValidFrontmatter(
   skillDir: string,
   metadata: Record<string, any>,
@@ -62,6 +76,13 @@ function isValidFrontmatter(
   );
 }
 
+/**
+ * 校验 skill 名称是否合法。
+ * 要求：字符串类型、非空、长度不超过 64、与目录名一致、符合 `SKILL_NAME_PATTERN` 正则。
+ * @param name - 待校验的名称
+ * @param skillDir - skill 所在目录路径（用于与目录名比对）
+ * @returns 名称合法时返回 `true`
+ */
 function isValidName(name: unknown, skillDir: string): boolean {
   if (typeof name !== "string") {
     return false;
@@ -76,6 +97,12 @@ function isValidName(name: unknown, skillDir: string): boolean {
   return SKILL_NAME_PATTERN.test(normalizedName);
 }
 
+/**
+ * 校验 skill 描述是否合法。
+ * 要求：字符串类型、非空、长度不超过 1024。
+ * @param description - 待校验的描述
+ * @returns 描述合法时返回 `true`
+ */
 function isValidDescription(description: unknown): boolean {
   if (typeof description !== "string") {
     return false;
@@ -84,6 +111,12 @@ function isValidDescription(description: unknown): boolean {
   return normalized.length > 0 && normalized.length <= 1024;
 }
 
+/**
+ * 校验 frontmatter 中可选的 `metadata` 字段是否合法。
+ * 允许为 `undefined`/`null`；若存在，必须是键值均为字符串的普通对象（非数组）。
+ * @param metadataField - 待校验的 metadata 字段值
+ * @returns 字段合法时返回 `true`
+ */
 function isValidMetadataField(metadataField: unknown): boolean {
   if (metadataField === undefined || metadataField === null) {
     return true;
@@ -96,6 +129,11 @@ function isValidMetadataField(metadataField: unknown): boolean {
   );
 }
 
+/**
+ * 获取内置 skill 包（`bub_skills`）的根目录列表。
+ * 若包未安装则返回空数组。
+ * @returns 内置 skill 根目录路径数组
+ */
 function builtinSkillsRoot(): string[] {
   try {
     const bubSkills = require("bub_skills");
@@ -105,6 +143,12 @@ function builtinSkillsRoot(): string[] {
   }
 }
 
+/**
+ * 枚举所有 skill 搜索根目录及其来源类型。
+ * 按 `project → global → builtin` 顺序返回，project 来源还会检查旧版目录。
+ * @param workspacePath - 当前工作区绝对路径
+ * @returns 根目录与来源类型的数组
+ */
 function iterSkillRoots(
   workspacePath: string,
 ): Array<{ root: string; source: "project" | "global" | "builtin" }> {
@@ -144,6 +188,12 @@ function iterSkillRoots(
   return roots;
 }
 
+/**
+ * 读取单个 skill 目录，解析并校验其 SKILL.md 文件，返回元数据对象。
+ * @param skillDir - skill 目录的绝对路径
+ * @param source - skill 来源类型
+ * @returns 解析成功时返回 `SkillMetadata`，否则返回 `null`
+ */
 function readSkill(
   skillDir: string,
   source: "project" | "global" | "builtin",
@@ -184,6 +234,11 @@ function readSkill(
   };
 }
 
+/**
+ * 在给定工作区路径下发现所有可用的 skill，按名称去重（project 优先）并按名称排序。
+ * @param workspacePath - 工作区绝对路径
+ * @returns 去重后按名称排序的 `SkillMetadata` 数组
+ */
 export function discoverSkills(workspacePath: string): SkillMetadata[] {
   const skillsByName: Record<string, SkillMetadata> = {};
 
@@ -222,6 +277,11 @@ export function discoverSkills(workspacePath: string): SkillMetadata[] {
   );
 }
 
+/**
+ * 读取 skill 文件的正文内容（去除 frontmatter 部分）。
+ * @param location - SKILL.md 文件的绝对路径
+ * @returns skill 正文字符串，读取失败时返回空字符串
+ */
 export function skillBody(location: string): string {
   const frontMatterPattern = /^---\s*\n[\s\S]*?\n---\s*\n/;
   try {
@@ -232,6 +292,13 @@ export function skillBody(location: string): string {
   }
 }
 
+/**
+ * 将 skill 列表渲染为系统提示词中的 `<available_skills>` XML 块。
+ * 若 `expandedSkills` 中包含某 skill 名称，则在列表项后附加其完整正文。
+ * @param skills - skill 元数据列表
+ * @param expandedSkills - 需要展开正文的 skill 名称集合（可选）
+ * @returns skill 列表的提示词字符串，若列表为空则返回空字符串
+ */
 export function renderSkillsPrompt(
   skills: SkillMetadata[],
   expandedSkills?: Set<string>,

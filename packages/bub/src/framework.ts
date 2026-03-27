@@ -19,6 +19,9 @@ export interface PluginStatus {
   detail?: string;
 }
 
+/**
+ * bub 核心框架类，负责插件管理、消息处理、频道管理和钉子调用。
+ */
 export class BubFramework {
   workspace: string;
   private _pluginManager: BubPluginManager;
@@ -26,6 +29,9 @@ export class BubFramework {
   private _pluginStatus: Record<string, PluginStatus> = {};
   private _outboundRouter: OutboundChannelRouter | null = null;
 
+  /**
+   * 获取 HookRuntime 实例。
+   */
   get hookRuntime(): HookRuntime {
     return this._hookRuntime;
   }
@@ -36,6 +42,10 @@ export class BubFramework {
     this._hookRuntime = new HookRuntime(this._pluginManager);
   }
 
+  /**
+   * 加载内置钩子实现（`BuiltinImpl`）并注册到插件管理器。
+   * 注册失败时记录错误状态但不抛出异常。
+   */
   loadBuiltinHooks(): void {
     const impl = new BuiltinImpl(this);
 
@@ -47,6 +57,10 @@ export class BubFramework {
     }
   }
 
+  /**
+   * 加载所有钩子实现：先加载内置钩子，再通过入口点加载外部插件。
+   * 外部插件加载失败时仅记录警告，不中断流程。
+   */
   async loadHooks(): Promise<void> {
     this.loadBuiltinHooks();
 
@@ -79,6 +93,10 @@ export class BubFramework {
     }
   }
 
+  /**
+   * 创建 CLI 应用实例，并触发所有插件的 `registerCliCommands` 钩子。
+   * @returns CLI 应用对象（EventEmitter）
+   */
   createCliApp(): any {
     const app: any = new EventEmitter();
     app.name = "bub";
@@ -89,6 +107,19 @@ export class BubFramework {
     return app;
   }
 
+  /**
+   * 处理一条入站消息，执行完整的请求-响应生命周期：
+   * 1. 解析 session ID
+   * 2. 加载运行时状态
+   * 3. 构建 prompt
+   * 4. 调用模型
+   * 5. 保存状态
+   * 6. 收集并分发出站消息
+   *
+   * @param inbound - 入站消息信封
+   * @returns 包含 sessionId、prompt、modelOutput、outbounds 的 TurnResult
+   * @throws 若处理过程中发生错误，触发 `onError` 钩子后重新抛出
+   */
   async processInbound(inbound: Envelope): Promise<TurnResult> {
     try {
       let sessionId = (await this._hookRuntime.callFirst(
@@ -171,10 +202,18 @@ export class BubFramework {
     }
   }
 
+  /**
+   * 返回所有已注册插件的钩子实现报告。
+   * @returns 以钩子名为 key、实现该钩子的插件名数组为 value 的对象
+   */
   hookReport(): Record<string, string[]> {
     return this._pluginManager.hooksReport;
   }
 
+  /**
+   * 同步获取 TapeStore 实例（通过 `provideTapeStore` 钩子）。
+   * @returns TapeStore 实例，若无插件实现则返回 `null`
+   */
   getTapeStore() {
     return this._hookRuntime.callFirstSync(
       "provideTapeStore" as keyof BubFirstResultHooks,
@@ -182,6 +221,13 @@ export class BubFramework {
     );
   }
 
+  /**
+   * 收集所有插件的系统提示词片段并拼接为完整系统提示词。
+   * 各片段按插件注册顺序逆序排列，以双换行分隔。
+   * @param prompt - 当前用户 prompt
+   * @param state - 运行时状态
+   * @returns 拼接后的系统提示词字符串
+   */
   async getSystemPrompt(
     prompt: string | Record<string, any>[],
     state: Record<string, any>,
@@ -196,6 +242,11 @@ export class BubFramework {
       .join("\n\n");
   }
 
+  /**
+   * 通过 `provideChannels` 钩子收集所有可用 Channel，以 channel 名为 key 去重后返回。
+   * @param messageHandler - 消息处理回调函数
+   * @returns 以 channel 名为 key 的 Channel 字典
+   */
   async getChannels(
     messageHandler: MessageHandler,
   ): Promise<Record<string, Channel>> {
@@ -216,10 +267,20 @@ export class BubFramework {
     return channels;
   }
 
+  /**
+   * 绑定出站消息路由器。传入 `null` 时解绑。
+   * @param router - 出站路由器实例，或 `null`
+   */
   bindOutboundRouter(router: OutboundChannelRouter | null): void {
     this._outboundRouter = router;
   }
 
+  /**
+   * 通过已绑定的出站路由器分发消息。
+   * 若未绑定路由器则返回 `false`。
+   * @param message - 待分发的消息信封
+   * @returns 分发成功返回 `true`，否则返回 `false`
+   */
   async dispatchViaRouter(message: Envelope): Promise<boolean> {
     if (!this._outboundRouter) {
       return false;
@@ -227,6 +288,12 @@ export class BubFramework {
     return this._outboundRouter.dispatch(message);
   }
 
+  /**
+   * 生成默认 session ID。
+   * 优先使用消息中的 `session_id` 字段，否则拼接 `channel:chat_id`。
+   * @param message - 消息信封
+   * @returns 默认 session ID 字符串
+   */
   private _defaultSessionId(message: Envelope): string {
     const sessionId = fieldOf(message, "session_id");
     if (sessionId !== undefined) {
@@ -237,6 +304,15 @@ export class BubFramework {
     return `${channel}:${chatId}`;
   }
 
+  /**
+   * 收集所有插件渲染的出站消息。
+   * 若所有插件均未返回出站消息，则生成一条包含 `modelOutput` 的默认回复。
+   * @param message - 原始入站消息
+   * @param sessionId - 当前 session ID
+   * @param state - 运行时状态
+   * @param modelOutput - 模型输出文本
+   * @returns 出站消息信封数组
+   */
   private async _collectOutbounds(
     message: Envelope,
     sessionId: string,

@@ -15,6 +15,10 @@ import { MessageHandler } from "@/types";
 
 export { CliRenderer };
 
+/**
+ * CLI 交互界面 Channel，提供基于命令行的交互式对话界面。
+ * 支持代理模式和 shell 模式切换、命令补全和历史记录。
+ */
 export class CliChannel extends EventEmitter {
   name = "cli";
   private _stop_event: boolean = false;
@@ -41,11 +45,18 @@ export class CliChannel extends EventEmitter {
     this._workspace = process.cwd();
   }
 
+  /**
+   * 启动 CLI 主循环。
+   * @param stop_event - 停止信号对象
+   */
   async start(stop_event: { isSet: () => boolean }): Promise<void> {
     this._stop_event = false;
     this._main_task = this._main_loop(stop_event);
   }
 
+  /**
+   * 停止 CLI 主循环并关闭 readline 界面。
+   */
   async stop(): Promise<void> {
     this._stop_event = true;
     if (this._rl) {
@@ -61,6 +72,11 @@ export class CliChannel extends EventEmitter {
     }
   }
 
+  /**
+   * 将出站消息输出到终端。
+   * 根据消息类型选择错误、命令输出或普通助手输出格式。
+   * @param message - 出站的 ChannelMessage
+   */
   async send(message: ChannelMessage): Promise<void> {
     const content = contentOf(message);
     switch (message.kind) {
@@ -76,6 +92,10 @@ export class CliChannel extends EventEmitter {
     }
   }
 
+  /**
+   * CLI 主循环：显示欢迎信息、初始化 readline，并循环读取用户输入。
+   * @param stop_event - 停止信号对象
+   */
   private async _main_loop(stop_event: {
     isSet: () => boolean;
   }): Promise<void> {
@@ -131,6 +151,11 @@ export class CliChannel extends EventEmitter {
     this._stop_event = true;
   }
 
+  /**
+   * 显示命令行提示符并等待用户输入。
+   * @returns 用户输入的字符串（已去除首尾空白）
+   * @throws 用户按下 Ctrl+C 时抛出 SIGINT 错误
+   */
   private async _prompt(): Promise<string> {
     return new Promise((resolve, reject) => {
       if (!this._rl) {
@@ -152,6 +177,11 @@ export class CliChannel extends EventEmitter {
     });
   }
 
+  /**
+   * 将用户输入规范化：在 shell 模式下，非命令输入会自动加上 `,` 前缀。
+   * @param raw - 用户原始输入
+   * @returns 规范化后的输入字符串
+   */
   private _normalizeInput(raw: string): string {
     if (this._mode !== "shell") {
       return raw;
@@ -162,6 +192,10 @@ export class CliChannel extends EventEmitter {
     return `,${raw}`;
   }
 
+  /**
+   * 创建 Tab 补全器，根据已注册的工具名称进行补全。
+   * @returns readline 补全器函数
+   */
   private _createCompleter(): (line: string) => [string[], string] {
     return (line: string) => {
       const toolNames = Object.keys(REGISTRY).map((name) => `,${name}`);
@@ -170,6 +204,9 @@ export class CliChannel extends EventEmitter {
     };
   }
 
+  /**
+   * 设置键盘绑定：SIGTSTP 和 Ctrl+X 模式切换。
+   */
   private _setupKeyBindings(): void {
     if (!this._rl) return;
 
@@ -189,6 +226,10 @@ export class CliChannel extends EventEmitter {
     });
   }
 
+  /**
+   * 从历史文件中加载命令历史记录。
+   * @returns 历史命令字符串数组
+   */
   private async _loadHistory(): Promise<string[]> {
     try {
       const historyFile = this._historyFile();
@@ -200,6 +241,10 @@ export class CliChannel extends EventEmitter {
     }
   }
 
+  /**
+   * 将命令追加到历史文件。
+   * @param command - 要保存的命令字符串
+   */
   private async _saveHistory(command: string): Promise<void> {
     try {
       const historyFile = this._historyFile();
@@ -209,6 +254,11 @@ export class CliChannel extends EventEmitter {
     }
   }
 
+  /**
+   * 获取当前工作区对应的历史文件路径。
+   * 历史文件以工作区路径的 MD5 哈希命名。
+   * @returns 历史文件的绝对路径
+   */
   private _historyFile(): string {
     const workspaceHash = createHash("md5")
       .update(this._workspace)
@@ -217,6 +267,9 @@ export class CliChannel extends EventEmitter {
     return join(historyDir, `${workspaceHash}.history`);
   }
 
+  /**
+   * 刷新当前 tape 的概要信息并更新 `_last_tape_info`。
+   */
   private async _refreshTapeInfo(): Promise<void> {
     const tape = this._agent.tapes.sessionTape(
       this._message_template.session_id,
@@ -225,6 +278,10 @@ export class CliChannel extends EventEmitter {
     this._last_tape_info = await this._agent.tapes.info(tape.name);
   }
 
+  /**
+   * 设置 CLI 会话元数据（sessionId 和 chatId）。
+   * @param options - 包含可选 sessionId 和 chatId 的对象
+   */
   setMetadata(options: { sessionId?: string; chatId?: string }): void {
     if (options.sessionId !== undefined) {
       this._message_template.session_id = options.sessionId;

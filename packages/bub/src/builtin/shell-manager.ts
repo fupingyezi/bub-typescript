@@ -1,6 +1,15 @@
 import { spawn } from "node:child_process";
 
+/**
+ * Shell 命令执行管理器，封装了带超时控制的子进程执行。
+ */
 export class ShellManager {
+  /**
+   * 执行 shell 命令，无超时限制。
+   * @param command - 要执行的 shell 命令
+   * @param cwd - 工作目录，默认为当前目录
+   * @returns 包含 stdout、stderr 和 exitCode 的结果对象
+   */
   async execute(
     command: string,
     cwd?: string,
@@ -9,6 +18,15 @@ export class ShellManager {
     return result;
   }
 
+  /**
+   * 执行 shell 命令，支持超时控制。
+   * 超时后先发送 SIGTERM，1 秒后再发送 SIGKILL。
+   * @param command - 要执行的 shell 命令
+   * @param timeoutMs - 超时毫秒数，0 表示无超时
+   * @param cwd - 工作目录，默认为当前目录
+   * @returns 包含 stdout、stderr 和 exitCode 的结果对象
+   * @throws 命令启动失败或超时时抛出错误
+   */
   async executeWithTimeout(
     command: string,
     timeoutMs: number,

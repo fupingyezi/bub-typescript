@@ -15,10 +15,21 @@ export interface AgentSettings {
   modelTimeoutSeconds: number | null;
 }
 
+/**
+ * 从环境变量中读取字符串值。
+ * @param key - 环境变量名
+ * @returns 环境变量的字符串值，不存在时返回 `undefined`
+ */
 function getEnv(key: string): string | undefined {
   return process.env[key];
 }
 
+/**
+ * 从环境变量中读取整数值。
+ * @param key - 环境变量名
+ * @param defaultValue - 环境变量不存在或无法解析时的默认值
+ * @returns 解析后的整数值
+ */
 function getEnvInt(key: string, defaultValue: number): number {
   const value = process.env[key];
   if (value === undefined) return defaultValue;
@@ -45,6 +56,11 @@ export class AgentSettingsImpl implements AgentSettings {
     this.modelTimeoutSeconds = data?.modelTimeoutSeconds ?? null;
   }
 
+  /**
+   * 从环境变量中读取配置并创建 AgentSettingsImpl 实例。
+   * 支持单一 API Key/Base 和多提供商模式（`BUB_<PROVIDER>_API_KEY`）。
+   * @returns 从环境变量初始化的 AgentSettingsImpl 实例
+   */
   static fromEnv(): AgentSettingsImpl {
     const apiKey = getEnv("BUB_API_KEY");
     const apiBase = getEnv("BUB_API_BASE");

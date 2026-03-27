@@ -52,7 +52,9 @@ export interface ToolEntry {
 export const REGISTRY: Record<string, ToolEntry> = {};
 
 /**
- * 将 REGISTRY 中的工具条目转换为 republic Tool 格式，供模型调用
+ * 将 REGISTRY 中的工具条目转换为 republic Tool 格式，供模型调用。
+ * @param entries - 工具条目数组
+ * @returns 符合 OpenAI function calling 格式的工具对象数组
  */
 export function modelTools(entries: ToolEntry[]): any[] {
   return entries.map((entry) => ({
@@ -66,7 +68,9 @@ export function modelTools(entries: ToolEntry[]): any[] {
 }
 
 /**
- * 渲染工具列表为系统提示词文本
+ * 渲染工具列表为系统提示词文本。
+ * @param entries - 工具条目数组
+ * @returns 包含工具名称列表的提示词字符串，若列表为空则返回空字符串
  */
 export function renderToolsPrompt(entries: ToolEntry[]): string {
   if (!entries || entries.length === 0) return "";
@@ -77,6 +81,13 @@ export function renderToolsPrompt(entries: ToolEntry[]): string {
   return lines.join("\n");
 }
 
+/**
+ * 装饰器工具，将函数注册到内置 REGISTRY。
+ * @param context - 是否需要注入 ToolContext，默认 `false`
+ * @param name - 工具名称，默认使用函数名
+ * @param model - 关联的模型（暂未使用）
+ * @returns 装饰器函数，接受工具实现函数并返回原函数
+ */
 export function tool(context: boolean = false, name?: string, model?: any) {
   return function <T extends (...args: any[]) => any>(fn: T): T {
     const toolName = name || fn.name;
@@ -89,6 +100,12 @@ export function tool(context: boolean = false, name?: string, model?: any) {
   };
 }
 
+/**
+ * 从 ToolContext 中获取运行时 Agent 实例。
+ * @param context - 工具调用上下文
+ * @returns Agent 实例
+ * @throws 若 context.state 中不存在 `_runtime_agent`，抛出错误
+ */
 function getAgent(context: ToolContext): any {
   if (!("_runtime_agent" in context.state)) {
     throw new Error("no runtime agent found in tool context");
@@ -96,6 +113,14 @@ function getAgent(context: ToolContext): any {
   return context.state["_runtime_agent"];
 }
 
+/**
+ * 将相对路径解析为绝对路径，以工作区为基准目录。
+ * 若路径已是绝对路径则直接返回。
+ * @param context - 工具调用上下文
+ * @param rawPath - 原始路径字符串
+ * @returns 解析后的绝对路径
+ * @throws 若为相对路径且未设置工作区，抛出错误
+ */
 function resolvePath(context: ToolContext, rawPath: string): string {
   if (nodePath.isAbsolute(rawPath)) {
     return rawPath;
@@ -109,6 +134,15 @@ function resolvePath(context: ToolContext, rawPath: string): string {
   return nodePath.join(workspace, rawPath);
 }
 
+/**
+ * 内置工具：在 shell 中执行任意命令并返回输出。
+ * @param cmd - 要执行的 shell 命令
+ * @param cwd - 工作目录，为 `null` 时使用工作区路径
+ * @param timeoutSeconds - 超时秒数，默认 30 秒
+ * @param context - 工具调用上下文
+ * @returns 命令标准输出
+ * @throws 命令退出码非零或超时时抛出错误
+ */
 async function bash(
   cmd: string,
   cwd: string | null = null,
@@ -140,6 +174,15 @@ async function bash(
 }
 tool(true)(bash);
 
+/**
+ * 内置工具：读取文件内容，支持按行切片。
+ * @param path - 文件路径（支持相对路径）
+ * @param offset - 起始行号（从 0 开始），默认 0
+ * @param limit - 读取行数，`null` 表示读取全部
+ * @param context - 工具调用上下文
+ * @returns 带行号范围头部的文件内容字符串
+ * @throws 文件不存在或无法读取时抛出错误
+ */
 async function fsRead(
   path: string,
   offset: number = 0,
@@ -163,6 +206,14 @@ async function fsRead(
 }
 tool(true, "fs.read")(fsRead);
 
+/**
+ * 内置工具：将内容写入文件（自动创建目录）。
+ * @param path - 文件路径（支持相对路径）
+ * @param content - 要写入的内容
+ * @param context - 工具调用上下文
+ * @returns 写入成功的确认信息
+ * @throws 写入失败时抛出错误
+ */
 async function fsWrite(
   path: string,
   content: string,
@@ -180,6 +231,15 @@ async function fsWrite(
 }
 tool(true, "fs.write")(fsWrite);
 
+/**
+ * 内置工具：将文件中第一个匹配的 `oldStr` 替换为 `newStr`。
+ * @param path - 文件路径（支持相对路径）
+ * @param oldStr - 要替换的原始内容
+ * @param newStr - 替换后的新内容
+ * @param context - 工具调用上下文
+ * @returns 编辑成功的确认信息
+ * @throws `oldStr` 未找到或文件读写失败时抛出错误
+ */
 async function fsEdit(
   path: string,
   oldStr: string,
@@ -208,11 +268,23 @@ async function fsEdit(
 }
 tool(true, "fs.edit")(fsEdit);
 
+/**
+ * 内置工具：显示指定 skill 的详细信息。
+ * @param name - skill 名称
+ * @param context - 工具调用上下文
+ * @returns skill 描述内容
+ * @throws 待实现，目前始终抛出 TODO 错误
+ */
 function skillDescribe(name: string, context?: ToolContext): string {
   throw new Error("TODO: skill tool requires skill discovery implementation");
 }
 tool(true, "skill")(skillDescribe);
 
+/**
+ * 内置工具：获取当前 tape 的概要信息（条目数、锤点数、token 用量等）。
+ * @param context - 工具调用上下文
+ * @returns 格式化的 tape 信息字符串
+ */
 async function tapeInfo(context?: ToolContext): Promise<string> {
   const agent = getAgent(context!);
   const info = await agent.tapes.info(context!.tape || "");
@@ -227,6 +299,13 @@ async function tapeInfo(context?: ToolContext): Promise<string> {
 }
 tool(true, "tape.info")(tapeInfo);
 
+/**
+ * 内置工具：在当前 tape 中搜索历史条目。
+ * 支持按类型、时间范围、关键词和数量进行过滤。
+ * @param param - 搜索参数对象
+ * @param context - 工具调用上下文
+ * @returns 格式化的搜索结果字符串
+ */
 async function tapeSearch(
   param: SearchInput,
   context?: ToolContext,
@@ -266,6 +345,12 @@ async function tapeSearch(
 }
 tool(true, "tape.search")(tapeSearch);
 
+/**
+ * 内置工具：重置当前 tape，可选将历史内容归档。
+ * @param archive - 是否将当前 tape 内容归档，默认 `false`
+ * @param context - 工具调用上下文
+ * @returns 操作结果字符串
+ */
 async function tapeReset(
   archive: boolean = false,
   context?: ToolContext,
@@ -276,6 +361,13 @@ async function tapeReset(
 }
 tool(true, "tape.reset")(tapeReset);
 
+/**
+ * 内置工具：在当前 tape 中添加一个锤点（handoff anchor）。
+ * @param name - 锤点名称，默认 `"handoff"`
+ * @param summary - 锤点摘要信息，默认空字符串
+ * @param context - 工具调用上下文
+ * @returns 添加成功的确认信息
+ */
 async function tapeHandoff(
   name: string = "handoff",
   summary: string = "",
@@ -287,6 +379,11 @@ async function tapeHandoff(
 }
 tool(true, "tape.handoff")(tapeHandoff);
 
+/**
+ * 内置工具：列出当前 tape 中所有锤点的名称列表。
+ * @param context - 工具调用上下文
+ * @returns 锤点名称列表字符串，若无锤点则返回 `"(no anchors)"`
+ */
 async function tapeAnchors(context?: ToolContext): Promise<string> {
   const agent = getAgent(context!);
   const anchors = await agent.tapes.anchors(context!.tape || "");
@@ -297,6 +394,14 @@ async function tapeAnchors(context?: ToolContext): Promise<string> {
 }
 tool(true, "tape.anchors")(tapeAnchors);
 
+/**
+ * 内置工具：发起 HTTP GET 请求并返回响应文本。
+ * @param url - 请求的 URL
+ * @param headers - 额外请求头，为 `null` 时仅使用默认头
+ * @param timeout - 超时秒数，为 `null` 时使用默认超时
+ * @returns 响应文本内容
+ * @throws HTTP 错误、超时或网络错误时抛出异常
+ */
 async function webFetch(
   url: string,
   headers: Record<string, string> | null = null,
@@ -332,6 +437,13 @@ async function webFetch(
 }
 tool(false, "web.fetch")(webFetch);
 
+/**
+ * 内置工具：启动一个子 Agent 任务。
+ * 子 Agent 共享当前状态，并使用临时 session ID（以 `temp/` 开头）。
+ * @param param - 子 Agent 输入参数
+ * @param context - 工具调用上下文
+ * @returns 子 Agent 的输出文本
+ */
 async function runSubagent(
   param: SubAgentInput,
   context?: ToolContext,
@@ -353,6 +465,10 @@ async function runSubagent(
 }
 tool(true, "subagent")(runSubagent);
 
+/**
+ * 内置工具：显示内置命令的帮助信息。
+ * @returns 帮助文本字符串
+ */
 function showHelp(): string {
   return (
     "Commands use ',' at line start.\n" +
