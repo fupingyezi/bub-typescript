@@ -218,7 +218,7 @@ export class BuiltinImpl {
   }
 
   private async _readAgentsFile(state: State): Promise<string> {
-    const workspace = state.get("_runtime_workspace", process.cwd());
+    const workspace = state["_runtime_workspace"] ?? process.cwd();
     const promptPath = join(workspace, AGENTS_FILE_NAME);
 
     try {

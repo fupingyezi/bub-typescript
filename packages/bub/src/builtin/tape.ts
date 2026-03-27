@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { LLM, Tape, TapeEntry, TapeQuery, AsyncTapeStore } from "republic";
 import { ForkTapeStore } from "./store";
 
@@ -32,17 +33,17 @@ export class TapeService {
 
   async info(tapeName: string): Promise<TapeInfo> {
     const tape = this._llm.tape(tapeName);
-    const entries = list<TapeEntry>(await tape.queryAsync.all());
+    const entries = await listAsync<TapeEntry>(tape.queryAsync.all());
     const anchors = entries.filter((e) => e.kind === "anchor");
-    const lastAnchor =
-      anchors.length > 0
-        ? anchors[anchors.length - 1].payload.get("name")
-        : null;
+    const lastAnchorEntry = anchors.length > 0 ? anchors[anchors.length - 1] : null;
+    const lastAnchor = lastAnchorEntry
+      ? String((lastAnchorEntry.payload as Record<string, any>).name ?? "-")
+      : null;
 
     let entriesSinceLastAnchor: TapeEntry[];
-    if (lastAnchor !== null) {
+    if (lastAnchorEntry !== null) {
       entriesSinceLastAnchor = entries.filter(
-        (e) => e.id > (anchors[anchors.length - 1].id as number),
+        (e) => e.id > (lastAnchorEntry.id as number),
       );
     } else {
       entriesSinceLastAnchor = entries;
@@ -51,15 +52,10 @@ export class TapeService {
     let lastTokenUsage: number | null = null;
     for (let i = entriesSinceLastAnchor.length - 1; i >= 0; i--) {
       const entry = entriesSinceLastAnchor[i];
-      if (
-        entry.kind === "event" &&
-        (entry.payload as Record<string, any>).get("name") === "run"
-      ) {
+      const payload = entry.payload as Record<string, any>;
+      if (entry.kind === "event" && payload.name === "run") {
         try {
-          const usage = (entry.payload as Record<string, any>)
-            .get("data")
-            ?.get("usage")
-            ?.get("total_tokens");
+          const usage = payload.data?.usage?.total_tokens;
           if (usage && typeof usage === "number") {
             lastTokenUsage = usage;
             break;
@@ -82,7 +78,7 @@ export class TapeService {
 
   async ensureBootstrapAnchor(tapeName: string): Promise<void> {
     const tape = this._llm.tape(tapeName);
-    const anchors = list(await tape.queryAsync.kinds("anchor").all());
+    const anchors = await listAsync(tape.queryAsync.kinds("anchor").all());
     if (anchors.length === 0) {
       await tape.handoffAsync("session/start", { owner: "human" });
     }
@@ -93,17 +89,16 @@ export class TapeService {
     limit: number = 20,
   ): Promise<AnchorSummary[]> {
     const tape = this._llm.tape(tapeName);
-    const entries = list<TapeEntry>(
-      await tape.queryAsync.kinds("anchor").all(),
+    const entries = await listAsync<TapeEntry>(
+      tape.queryAsync.kinds("anchor").all(),
     );
     const results: AnchorSummary[] = [];
     const sliced = entries.slice(-limit);
 
     for (const entry of sliced) {
-      const name = String(
-        (entry.payload as Record<string, any>).get("name", "-"),
-      );
-      const state = (entry.payload as Record<string, any>).get("state");
+      const payload = entry.payload as Record<string, any>;
+      const name = String(payload.name ?? "-");
+      const state = payload.state;
       const stateDict: Record<string, object> =
         typeof state === "object" && state !== null ? { ...state } : {};
       results.push({ name, state: stateDict });
@@ -151,7 +146,7 @@ export class TapeService {
   }
 
   async search(query: TapeQuery<AsyncTapeStore>): Promise<TapeEntry[]> {
-    return list(await this._store.fetchAll(query));
+    return await this._store.fetchAll(query);
   }
 
   async appendEvent(
@@ -166,8 +161,8 @@ export class TapeService {
   }
 
   sessionTape(sessionId: string, workspace: string): Tape {
-    const workspaceHash = md5(workspace, false);
-    const sessionHash = md5(sessionId, false);
+    const workspaceHash = createHash("md5").update(workspace).digest("hex");
+    const sessionHash = createHash("md5").update(sessionId).digest("hex");
     const tapeName =
       workspaceHash.slice(0, 16) + "__" + sessionHash.slice(0, 16);
     return this._llm.tape(tapeName);
@@ -178,24 +173,9 @@ export class TapeService {
   }
 }
 
-function list<T>(iterable: Iterable<T> | Promise<T[]>): T[] {
-  if (iterable && typeof (iterable as any).then === "function") {
-    return [] as T[];
+async function listAsync<T>(promise: Promise<T[]> | Iterable<T>): Promise<T[]> {
+  if (promise && typeof (promise as any).then === "function") {
+    return await (promise as Promise<T[]>);
   }
-  return Array.from(iterable as Iterable<T>);
-}
-
-function md5(str: string, _usedforsecurity: boolean): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  let hex = "";
-  for (let i = 0; i < 8; i++) {
-    hex += ("0" + Math.abs(hash % 16).toString(16)).slice(-2);
-    hash = Math.floor(hash / 16);
-  }
-  return hex;
+  return Array.from(promise as Iterable<T>);
 }

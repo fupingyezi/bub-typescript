@@ -130,18 +130,35 @@ export class ChannelManager {
   private sessionHandlers: Map<string, (message: ChannelMessage) => Promise<void>> = new Map();
   private isStopped: boolean = false;
   private messageEvent: EventEmitter;
+  private _initPromise: Promise<void> | null = null;
 
   constructor(framework: BubFramework, enabledChannels?: string[]) {
     this.framework = framework;
     this.messageEvent = new EventEmitter();
     this.messageEvent.setMaxListeners(0);
-    this.channels = this.framework.getChannels(this.onReceive.bind(this));
+    this.channels = {};
     this.settings = { ...DEFAULT_CHANNEL_SETTINGS };
     if (enabledChannels !== undefined) {
       this.enabledChannelsList = enabledChannels;
     } else {
       this.enabledChannelsList = this.settings.enabledChannels.split(",");
     }
+  }
+
+  /**
+   * 异步初始化：获取所有 channels。
+   * listenAndRun() 会自动调用，也可手动提前调用。
+   */
+  async init(): Promise<void> {
+    if (this._initPromise) {
+      return this._initPromise;
+    }
+    this._initPromise = this.framework
+      .getChannels(this.onReceive.bind(this))
+      .then((channels) => {
+        this.channels = channels;
+      });
+    return this._initPromise;
   }
 
   async onReceive(message: ChannelMessage): Promise<void> {
@@ -240,6 +257,7 @@ export class ChannelManager {
   }
 
   async listenAndRun(): Promise<void> {
+    await this.init();
     this.framework.bindOutboundRouter(this);
     for (const channel of this.enabledChannels()) {
       await channel.start(this.stopEvent() as any);

@@ -108,8 +108,8 @@ export class CliChannel extends EventEmitter {
         const message = new ChannelMessage(
           this._message_template.session_id,
           this._message_template.channel,
-          this._message_template.chat_id,
           request,
+          this._message_template.chat_id,
         );
 
         this._renderer.info("Processing...");

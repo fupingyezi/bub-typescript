@@ -55,7 +55,7 @@ function _appendToolCallEntry(
   entry: TapeEntry,
 ): Record<string, any>[] {
   const payload = entry.payload as Record<string, any>;
-  const calls = _normalizeToolCalls(payload.get("calls"));
+  const calls = _normalizeToolCalls(payload["calls"]);
   if (calls.length > 0) {
     messages.push({ role: "assistant", content: "", tool_calls: calls });
   }
@@ -68,7 +68,7 @@ function _appendToolResultEntry(
   entry: TapeEntry,
 ): void {
   const payload = entry.payload as Record<string, any>;
-  const results = payload.get("results");
+  const results = payload["results"];
   if (!Array.isArray(results)) {
     return;
   }
@@ -93,14 +93,14 @@ function _buildToolResultMessage(
   }
 
   const call = pendingCalls[index];
-  const callId = call.get("id");
+  const callId = call["id"];
   if (typeof callId === "string" && callId) {
     message["tool_call_id"] = callId;
   }
 
-  const fn = call.get("function");
+  const fn = call["function"];
   if (typeof fn === "object" && fn !== null) {
-    const name = fn.get("name");
+    const name = fn["name"];
     if (typeof name === "string" && name) {
       message["name"] = name;
     }

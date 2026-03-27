@@ -1,3 +1,6 @@
+import fs from "fs";
+import fsPromises from "fs/promises";
+import path from "path";
 import {
   AsyncTapeStore,
   AsyncTapeStoreAdapter,
@@ -83,7 +86,7 @@ export class ForkTapeStore {
           if (
             query._afterLast ||
             (query._afterAnchor &&
-              (entry.payload as Record<string, any>).get("name") ===
+              (entry.payload as Record<string, any>)["name"] ===
                 query._afterAnchor)
           ) {
             thisEntries.length = 0;
@@ -102,20 +105,24 @@ export class ForkTapeStore {
   }
 
   async fork(tape: string, mergeBack: boolean = true): Promise<void> {
-    const store = new InMemoryTapeStore();
-    const token = currentStore.set(store);
+    // 将当前 _current 中已有的条目保存，fork 期间写入新的临时存储
+    const forkStore = new InMemoryTapeStore();
+    const prevCurrent = this._current;
+    this._current = forkStore;
     try {
-      // fork scope - would need async context manager
+      // fork 作用域：调用方在此期间执行 append 操作，写入 forkStore
+      // 此方法本身不执行任何业务逻辑，由外部在 fork 后调用 append
     } finally {
-      currentStore.reset(token);
+      this._current = prevCurrent;
       if (mergeBack) {
-        const entries = (store as any).read(tape);
+        const entries = (forkStore as any).read(tape);
         if (entries) {
           for (const entry of entries) {
             await this._parent.append(tape, entry);
           }
         }
       }
+      // mergeBack=false 时直接丢弃 forkStore 数据
     }
   }
 }
@@ -204,8 +211,17 @@ export class FileTapeStore implements TapeStore {
   }
 
   listTapes(): string[] {
-    // Would need fs readdir - placeholder
-    return [];
+    try {
+      if (!fs.existsSync(this._directory)) {
+        return [];
+      }
+      return fs
+        .readdirSync(this._directory)
+        .filter((f) => f.endsWith(".jsonl"))
+        .map((f) => f.slice(0, -6));
+    } catch {
+      return [];
+    }
   }
 
   reset(tape: string): void {
@@ -213,11 +229,18 @@ export class FileTapeStore implements TapeStore {
   }
 
   append(tape: string, entry: TapeEntry): void {
+    this._ensureDirectory();
     this._tapeFile(tape).append(entry);
   }
 
   read(tape: string): TapeEntry[] | null {
     return this._tapeFile(tape).read();
+  }
+
+  private _ensureDirectory(): void {
+    if (!fs.existsSync(this._directory)) {
+      fs.mkdirSync(this._directory, { recursive: true });
+    }
   }
 }
 
@@ -244,17 +267,45 @@ export class TapeFile {
   }
 
   reset(): void {
-    // Would need fs unlink - placeholder
+    try {
+      if (fs.existsSync(this._path)) {
+        fs.unlinkSync(this._path);
+      }
+    } catch {
+      // 忽略删除失败
+    }
     this._reset();
   }
 
   read(): TapeEntry[] | null {
-    // Would need fs read - placeholder
+    // 增量读取：只读取自上次读取后新增的行
+    try {
+      if (!fs.existsSync(this._path)) {
+        return this._readEntries.length > 0 ? this._readEntries : null;
+      }
+      const content = fs.readFileSync(this._path, "utf-8");
+      const lines = content.split("\n").filter((l) => l.trim());
+      // 只处理新增的行（_readOffset 之后的行）
+      const newLines = lines.slice(this._readOffset);
+      for (const line of newLines) {
+        try {
+          const payload = JSON.parse(line);
+          const entry = TapeFile.entryFromPayload(payload);
+          if (entry !== null) {
+            this._readEntries.push(entry);
+          }
+        } catch {
+          // 跳过无法解析的行
+        }
+      }
+      this._readOffset = lines.length;
+    } catch {
+      // 读取失败时返回已缓存的条目
+    }
     return this._readEntries.length > 0 ? this._readEntries : null;
   }
 
   append(entry: TapeEntry): void {
-    // Would need fs append - placeholder
     const nextId = this._nextId();
     const stored = new TapeEntry(
       nextId,
@@ -263,6 +314,24 @@ export class TapeFile {
       { ...entry.meta },
       entry.timestamp,
     );
+    // 写入磁盘（JSONL 格式追加）
+    try {
+      const dir = path.dirname(this._path);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const line = JSON.stringify({
+        id: stored.id,
+        kind: stored.kind,
+        payload: stored.payload,
+        meta: stored.meta,
+        date: stored.timestamp,
+      }) + "\n";
+      fs.appendFileSync(this._path, line, "utf-8");
+      this._readOffset += 1;
+    } catch {
+      // 写入失败时仅保留内存缓存
+    }
     this._readEntries.push(stored);
   }
 

@@ -1,5 +1,5 @@
 import { Channel } from "./base";
-import { ChannelMessage, MediaItem, MediaType } from "./message";
+import { ChannelMessage, MediaItem, MediaType, AsyncContextManager } from "./message";
 import { MessageHandler } from "../types";
 
 interface TelegramConfig {
@@ -356,7 +356,24 @@ export class TelegramChannel extends Channel {
 
     const isActive = this.checkFilter(message);
 
-    const lifespan = () => this.startTyping(chatId);
+    let _stopTyping: (() => void) | null = null;
+    const lifespan: AsyncContextManager = {
+      enter: async () => {
+        _stopTyping = await this.startTyping(chatId);
+      },
+      exit: async () => {
+        if (_stopTyping) {
+          _stopTyping();
+          _stopTyping = null;
+        }
+      },
+      [Symbol.asyncDispose]: async () => {
+        if (_stopTyping) {
+          _stopTyping();
+          _stopTyping = null;
+        }
+      },
+    };
 
     return new ChannelMessage(
       sessionId,

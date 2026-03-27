@@ -2,8 +2,9 @@ import { LLM, ToolAutoResult, Tape, TapeContext, TapeEntry } from "republic";
 import { AgentSettingsImpl } from "./settings";
 import { ForkTapeStore, FileTapeStore } from "./store";
 import { TapeService } from "./tape";
-import { REGISTRY } from "./tools";
+import { REGISTRY, renderToolsPrompt, modelTools } from "../tools";
 import { defaultTapeContext } from "./context";
+import { discoverSkills, renderSkillsPrompt } from "../skills";
 
 export const CONTINUE_PROMPT = "Continue the task or respond to the channel.";
 export const DEFAULT_BUB_HEADERS = { "HTTP-Referer": "https://bub.build/", "X-Title": "Bub" };
@@ -89,17 +90,22 @@ export class Agent {
     try {
       const entry = REGISTRY[name];
       if (!entry) {
-        output = "TODO: bash execution requires shell implementation";
+        // 未知命令，尝试作为 bash 命令执行
+        const bashEntry = REGISTRY["bash"];
+        if (bashEntry) {
+          const toolContext = { tape: tape.name, runId: "run_command", state: tape.context.state };
+          output = await bashEntry.run(line.slice(1).trim(), null, null, toolContext);
+        } else {
+          output = `unknown command: ${name}`;
+        }
       } else {
         const args = this._parseArgs(argTokens);
+        const toolContext = { tape: tape.name, runId: "run_command", state: tape.context.state };
         if (entry.context) {
-          args.kwargs["context"] = JSON.stringify({
-            tape: tape.name,
-            runId: "run_command",
-            state: tape.context.state,
-          });
+          output = await entry.run(...args.positional, ...Object.values(args.kwargs), toolContext);
+        } else {
+          output = await entry.run(...args.positional, ...Object.values(args.kwargs));
         }
-        output = await entry.run(...args.positional, ...Object.entries(args.kwargs).map(([k, v]) => `${k}=${v}`));
       }
     } catch (exc) {
       status = "error";
@@ -202,42 +208,83 @@ export class Agent {
 
     const promptText = typeof prompt === "string" ? prompt : this._extractTextFromParts(prompt);
 
+    // 过滤工具列表，并转换为 republic Tool 格式
     let filteredTools = Object.values(REGISTRY);
     if (allowedTools) {
       const allowedSet = new Set(allowedTools.map((n) => n.toLowerCase()));
       filteredTools = filteredTools.filter((t) => allowedSet.has(t.name.toLowerCase()));
     }
+    const tools = modelTools(filteredTools);
+
+    const systemPrompt = await this._systemPrompt(promptText, tape.context.state, allowedSkills);
 
     const timeoutMs = this._settings.modelTimeoutSeconds ? this._settings.modelTimeoutSeconds * 1000 : undefined;
 
-    const result = await Promise.race([
-      tape.runToolsAsync(promptText, {
-        systemPrompt: this._systemPrompt(promptText, tape.context.state, allowedSkills),
-        maxTokens: this._settings.maxTokens,
-        model,
-        ...extraOptions,
-      }),
-      timeoutMs ? new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), timeoutMs)) : new Promise<void>((resolve) => setTimeout(() => resolve(undefined), 999999999)),
-    ]);
+    const runPromise = tape.runToolsAsync(promptText, {
+      systemPrompt,
+      maxTokens: this._settings.maxTokens,
+      model,
+      tools,
+      ...extraOptions,
+    });
+
+    const result = timeoutMs
+      ? await Promise.race([
+          runPromise,
+          new Promise<ToolAutoResult>((_, reject) =>
+            setTimeout(() => reject(new Error("timeout")), timeoutMs),
+          ),
+        ])
+      : await runPromise;
 
     return result;
   }
 
-  private _systemPrompt(prompt: string, state: State, allowedSkills: string[] | null | undefined): string {
+  private async _systemPrompt(
+    prompt: string,
+    state: State,
+    allowedSkills: string[] | null | undefined,
+  ): Promise<string> {
     const blocks: string[] = [];
 
-    const frameworkPrompt = (this._framework as any).getSystemPrompt?.(prompt, state);
+    // 获取 framework 系统提示词（异步）
+    const frameworkPrompt = await (this._framework as any).getSystemPrompt?.(prompt, state);
     if (frameworkPrompt) {
       blocks.push(frameworkPrompt);
     }
 
-    blocks.push("TODO: tools prompt rendering requires tools implementation");
+    // 渲染工具提示词
+    const allTools = Object.values(REGISTRY);
+    const toolsPrompt = renderToolsPrompt(allTools);
+    if (toolsPrompt) {
+      blocks.push(toolsPrompt);
+    }
+
+    // 渲染技能提示词
+    const workspace = (state._runtime_workspace as string) || process.cwd();
+    const skillsPromptStr = this._loadSkillsPrompt(prompt, workspace, allowedSkills ? new Set(allowedSkills) : null);
+    if (skillsPromptStr) {
+      blocks.push(skillsPromptStr);
+    }
 
     return blocks.join("\n\n");
   }
 
-  private _loadSkillsPrompt(prompt: string, workspace: string, allowedSkills: Set<string> | null): string {
-    return "";
+  private _loadSkillsPrompt(
+    prompt: string,
+    workspace: string,
+    allowedSkills: Set<string> | null,
+  ): string {
+    try {
+      const skills = discoverSkills(workspace);
+      const filtered = allowedSkills
+        ? skills.filter((s) => allowedSkills.has(s.name))
+        : skills;
+      if (filtered.length === 0) return "";
+      return renderSkillsPrompt(filtered);
+    } catch {
+      return "";
+    }
   }
 
   private _parseInternalCommand(line: string): [string, string[]] {

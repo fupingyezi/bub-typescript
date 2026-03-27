@@ -1,3 +1,6 @@
+import fs from "fs/promises";
+import fsSync from "fs";
+import nodePath from "path";
 import { ToolContext, TapeEntry } from "republic";
 import { AnchorSummary } from "./tape";
 import { ShellManager } from "./shell-manager";
@@ -48,6 +51,32 @@ export interface ToolEntry {
 
 export const REGISTRY: Record<string, ToolEntry> = {};
 
+/**
+ * 将 REGISTRY 中的工具条目转换为 republic Tool 格式，供模型调用
+ */
+export function modelTools(entries: ToolEntry[]): any[] {
+  return entries.map((entry) => ({
+    type: "function",
+    function: {
+      name: entry.name,
+      description: "",
+      parameters: { type: "object", properties: {} },
+    },
+  }));
+}
+
+/**
+ * 渲染工具列表为系统提示词文本
+ */
+export function renderToolsPrompt(entries: ToolEntry[]): string {
+  if (!entries || entries.length === 0) return "";
+  const lines = ["Available tools:"];
+  for (const entry of entries) {
+    lines.push(`  - ${entry.name}`);
+  }
+  return lines.join("\n");
+}
+
 export function tool(context: boolean = false, name?: string, model?: any) {
   return function <T extends (...args: any[]) => any>(fn: T): T {
     const toolName = name || fn.name;
@@ -68,13 +97,16 @@ function getAgent(context: ToolContext): any {
 }
 
 function resolvePath(context: ToolContext, rawPath: string): string {
-  const workspace = context.state.get("_runtime_workspace");
+  if (nodePath.isAbsolute(rawPath)) {
+    return rawPath;
+  }
+  const workspace = context.state["_runtime_workspace"] as string | undefined;
   if (!workspace) {
     throw new Error(
       `relative path '${rawPath}' is not allowed without a workspace`,
     );
   }
-  return rawPath;
+  return nodePath.join(workspace, rawPath);
 }
 
 async function bash(
@@ -83,7 +115,7 @@ async function bash(
   timeoutSeconds: number = DEFAULT_COMMAND_TIMEOUT_SECONDS,
   context?: ToolContext,
 ): Promise<string> {
-  const workspace = context?.state.get("_runtime_workspace") as
+  const workspace = context?.state["_runtime_workspace"] as
     | string
     | undefined;
   const effectiveCwd = cwd || workspace || undefined;
@@ -108,29 +140,71 @@ async function bash(
 }
 tool(true)(bash);
 
-function fsRead(
+async function fsRead(
   path: string,
   offset: number = 0,
   limit: number | null = null,
   context?: ToolContext,
-): string {
-  throw new Error("TODO: fs.read tool requires filesystem implementation");
+): Promise<string> {
+  const resolvedPath = resolvePath(context!, path);
+  let content: string;
+  try {
+    content = await fs.readFile(resolvedPath, "utf-8");
+  } catch (err: any) {
+    throw new Error(`fs.read: cannot read '${resolvedPath}': ${err.message}`);
+  }
+  const lines = content.split("\n");
+  const totalLines = lines.length;
+  const start = Math.max(0, offset);
+  const end = limit !== null ? Math.min(start + limit, totalLines) : totalLines;
+  const sliced = lines.slice(start, end).join("\n");
+  const header = `[lines ${start + 1}-${end} of ${totalLines}]\n`;
+  return header + sliced;
 }
 tool(true, "fs.read")(fsRead);
 
-function fsWrite(path: string, content: string, context?: ToolContext): string {
-  throw new Error("TODO: fs.write tool requires filesystem implementation");
+async function fsWrite(
+  path: string,
+  content: string,
+  context?: ToolContext,
+): Promise<string> {
+  const resolvedPath = resolvePath(context!, path);
+  const dir = nodePath.dirname(resolvedPath);
+  try {
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(resolvedPath, content, "utf-8");
+  } catch (err: any) {
+    throw new Error(`fs.write: cannot write '${resolvedPath}': ${err.message}`);
+  }
+  return `ok: wrote ${content.length} chars to '${resolvedPath}'`;
 }
 tool(true, "fs.write")(fsWrite);
 
-function fsEdit(
+async function fsEdit(
   path: string,
   oldStr: string,
   newStr: string,
-  start: number = 0,
   context?: ToolContext,
-): string {
-  throw new Error("TODO: fs.edit tool requires filesystem implementation");
+): Promise<string> {
+  const resolvedPath = resolvePath(context!, path);
+  let content: string;
+  try {
+    content = await fs.readFile(resolvedPath, "utf-8");
+  } catch (err: any) {
+    throw new Error(`fs.edit: cannot read '${resolvedPath}': ${err.message}`);
+  }
+  if (!content.includes(oldStr)) {
+    throw new Error(
+      `fs.edit: oldStr not found in '${resolvedPath}'. No changes made.`,
+    );
+  }
+  const updated = content.replace(oldStr, newStr);
+  try {
+    await fs.writeFile(resolvedPath, updated, "utf-8");
+  } catch (err: any) {
+    throw new Error(`fs.edit: cannot write '${resolvedPath}': ${err.message}`);
+  }
+  return `ok: edited '${resolvedPath}'`;
 }
 tool(true, "fs.edit")(fsEdit);
 
@@ -157,7 +231,38 @@ async function tapeSearch(
   param: SearchInput,
   context?: ToolContext,
 ): Promise<string> {
-  throw new Error("TODO: tape.search tool requires TapeQuery implementation");
+  const agent = getAgent(context!);
+  const tapeName = context!.tape || "";
+  const tape = agent.tapes._llm.tape(tapeName);
+
+  // 构建查询
+  let query = tape.queryAsync;
+  if (param.kinds && param.kinds.length > 0) {
+    query = query.kinds(...param.kinds);
+  }
+  if (param.start || param.end) {
+    const start = param.start || "1970-01-01";
+    const end = param.end || new Date().toISOString();
+    query = query.betweenDates(start, end);
+  }
+  if (param.query) {
+    query = query.search(param.query);
+  }
+  if (param.limit) {
+    query = query.limit(param.limit);
+  }
+
+  const entries: TapeEntry[] = await query.all();
+  if (!entries || entries.length === 0) {
+    return "(no results)";
+  }
+
+  const lines = entries.map((e) => {
+    const ts = e.timestamp ? new Date(e.timestamp).toISOString() : "";
+    const payload = JSON.stringify(e.payload).slice(0, 200);
+    return `[${ts}] ${e.kind}: ${payload}`;
+  });
+  return lines.join("\n");
 }
 tool(true, "tape.search")(tapeSearch);
 
@@ -197,7 +302,33 @@ async function webFetch(
   headers: Record<string, string> | null = null,
   timeout: number | null = null,
 ): Promise<string> {
-  throw new Error("TODO: web.fetch tool requires HTTP client implementation");
+  const effectiveTimeout = (timeout ?? DEFAULT_REQUEST_TIMEOUT_SECONDS) * 1000;
+  const effectiveHeaders: Record<string, string> = {
+    ...DEFAULT_HEADERS,
+    ...(headers || {}),
+  };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), effectiveTimeout);
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: effectiveHeaders,
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} ${response.statusText}`);
+    }
+    return await response.text();
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      throw new Error(`web.fetch: request to '${url}' timed out after ${effectiveTimeout}ms`);
+    }
+    throw new Error(`web.fetch: ${err.message}`);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 tool(false, "web.fetch")(webFetch);
 
@@ -205,11 +336,22 @@ async function runSubagent(
   param: SubAgentInput,
   context?: ToolContext,
 ): Promise<string> {
-  throw new Error(
-    "TODO: subagent tool requires agent coordination implementation",
+  const agent = getAgent(context!);
+  const sessionId = param.session || `temp/${Date.now()}`;
+  const state: Record<string, any> = {
+    ...context!.state,
+    _runtime_agent: agent,
+  };
+  return await agent.run(
+    sessionId,
+    param.prompt,
+    state,
+    param.model ?? null,
+    param.allowedSkills ?? null,
+    param.allowedTools ?? null,
   );
 }
-tool(false, "subagent")(runSubagent);
+tool(true, "subagent")(runSubagent);
 
 function showHelp(): string {
   return (

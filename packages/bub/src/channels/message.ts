@@ -84,7 +84,7 @@ export class ChannelMessage {
     sessionId: string,
     channel: string,
     content: string,
-    chatId: string = "defualt",
+    chatId: string = "default",
     isActive: boolean = true,
     kind: MessageKind = "normal",
     context: Record<string, any> = {},

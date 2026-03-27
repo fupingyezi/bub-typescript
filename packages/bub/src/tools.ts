@@ -84,7 +84,7 @@ export function tool(
   func?: Function,
   options?: {
     name?: string;
-    model?: unknown;
+    model?: (new (...args: any[]) => any);
     description?: string;
     context?: boolean;
   },

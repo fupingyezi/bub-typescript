@@ -37,7 +37,6 @@ export const BUB_HOOK_NAMES: (keyof BubHooks)[] = [
   "runModel",
   "provideTapeStore",
   "buildTapeContext",
-  "dispatchOutbound",
   // Broadcast hooks
   "saveState",
   "renderOutbound",

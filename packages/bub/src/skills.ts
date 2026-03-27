@@ -31,7 +31,7 @@ function parseFrontmatter(content: string): Record<string, any> {
     if (lines[idx].trim() === "---") {
       const payload = lines.slice(1, idx).join("\n");
       try {
-        const parsed = yaml.safeLoad(payload);
+        const parsed = yaml.load(payload);
         if (typeof parsed === "object" && parsed !== null) {
           return Object.fromEntries(
             Object.entries(parsed).map(([key, value]) => [

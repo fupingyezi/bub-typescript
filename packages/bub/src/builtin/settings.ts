@@ -1,6 +1,9 @@
+import * as os from "os";
+import * as path from "path";
+
 export const DEFAULT_MODEL = "openrouter:qwen/qwen3-coder-next";
 export const DEFAULT_MAX_TOKENS = 1024;
-export const DEFAULT_HOME = new URL("file://~/.bub").pathname;
+export const DEFAULT_HOME = process.env.BUB_HOME ?? path.join(os.homedir(), ".bub");
 
 export interface AgentSettings {
   home: string;
@@ -33,7 +36,7 @@ export class AgentSettingsImpl implements AgentSettings {
   modelTimeoutSeconds: number | null;
 
   constructor(data?: Partial<AgentSettings>) {
-    this.home = data?.home ?? DEFAULT_HOME;
+    this.home = data?.home ?? (process.env.BUB_HOME ?? path.join(os.homedir(), ".bub"));
     this.model = data?.model ?? DEFAULT_MODEL;
     this.apiKey = data?.apiKey ?? null;
     this.apiBase = data?.apiBase ?? null;
